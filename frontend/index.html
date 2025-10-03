@@ -766,8 +766,11 @@
             <div class="chart-container">
                 <h3>🤖 Genie AI Query Interface</h3>
                 <p style="color: #666; margin-bottom: 20px;">Query our gold table data using natural language</p>
-                <input type="text" placeholder="Ask Genie: 'Show me properties with declining satisfaction scores'" style="width: 100%; padding: 15px; border: 2px solid #ddd; border-radius: 10px; font-size: 1.1em;">
-                <button class="action-button" style="margin-top: 15px;">Query Gold Table</button>
+                <input type="text" id="genie-input" placeholder="Ask Genie: 'Show me properties with declining satisfaction scores'" value="show me top issues in chicago" style="width: 100%; padding: 15px; border: 2px solid #ddd; border-radius: 10px; font-size: 1.1em;">
+                <button id="genie-button" class="action-button" style="margin-top: 15px;">Query Gold Table</button>
+                <div id="genie-results-container" style="margin-top: 20px; display: none;">
+                    <!-- Dynamic Genie results will appear here -->
+                </div>
             </div>
         </div>
 
@@ -1014,10 +1017,11 @@
 
         // Add event listener for Genie query
         document.addEventListener('DOMContentLoaded', function() {
-            const genieInput = document.querySelector('input[placeholder*="Ask Genie"]');
-            const genieButton = document.querySelector('#dashboard .action-button');
+            const genieInput = document.getElementById('genie-input');
+            const genieButton = document.getElementById('genie-button');
+            const resultsContainer = document.getElementById('genie-results-container');
             
-            if (genieInput && genieButton) {
+            if (genieInput && genieButton && resultsContainer) {
                 genieButton.addEventListener('click', async function() {
                     const query = genieInput.value.trim();
                     if (!query) {
@@ -1026,6 +1030,9 @@
                     }
                     
                     try {
+                        // Clear previous results and show loading
+                        resultsContainer.innerHTML = '<div class="loading">Querying Genie AI... Please wait.</div>';
+                        resultsContainer.style.display = 'block';
                         genieButton.textContent = 'Querying...';
                         genieButton.disabled = true;
                         
@@ -1034,45 +1041,105 @@
                             body: JSON.stringify({ query: query })
                         });
                         
-                        // Display results in a new section
-                        const resultsContainer = document.createElement('div');
-                        resultsContainer.className = 'genie-results';
-                        resultsContainer.style.marginTop = '20px';
-                        resultsContainer.style.padding = '20px';
-                        resultsContainer.style.background = '#404040';
-                        resultsContainer.style.borderRadius = '8px';
-                        resultsContainer.style.border = '1px solid #555';
+                        // Clear loading and display new results
+                        resultsContainer.innerHTML = '';
                         
                         if (result.error) {
-                            resultsContainer.innerHTML = `<p style="color: #dc3545;">Error: ${result.error}</p>`;
-                        } else {
+                            resultsContainer.innerHTML = `<div style="color: #dc3545; padding: 15px; background: #2e1a1a; border-radius: 6px; margin-top: 10px;">Error: ${result.error}</div>`;
+                        } else if (result.results && result.results.length > 0) {
                             result.results.forEach((item, index) => {
+                                const resultDiv = document.createElement('div');
+                                resultDiv.style.marginBottom = '20px';
+                                resultDiv.style.padding = '15px';
+                                resultDiv.style.background = '#1a1a1a';
+                                resultDiv.style.borderRadius = '6px';
+                                resultDiv.style.borderLeft = '4px solid #ff6b35';
+                                
                                 if (item.type === 'text') {
-                                    resultsContainer.innerHTML += `<p>${item.content}</p>`;
+                                    resultDiv.innerHTML = `
+                                        <h4 style="color: #e8e8e8; margin-bottom: 10px;">Genie Response:</h4>
+                                        <p style="white-space: pre-wrap; line-height: 1.6; color: #e8e8e8;">${item.content}</p>
+                                    `;
                                 } else if (item.type === 'query') {
-                                    resultsContainer.innerHTML += `
-                                        <div style="margin-bottom: 15px;">
-                                            <h4>Query: ${item.description}</h4>
-                                            <pre style="background: #1a1a1a; padding: 10px; border-radius: 4px; overflow-x: auto;">${item.query}</pre>
-                                            <p style="color: #b8b8b8;">Data would be displayed here (table/chart)</p>
+                                    resultDiv.innerHTML = `
+                                        <h4 style="color: #e8e8e8; margin-bottom: 10px;">SQL Query Generated:</h4>
+                                        <p style="color: #b8b8b8; margin-bottom: 10px;"><strong>Description:</strong> ${item.description}</p>
+                                        <pre style="background: #2d2d2d; padding: 10px; border-radius: 4px; overflow-x: auto; color: #ff6b35; margin-bottom: 10px;">${item.query}</pre>
+                                        <p style="color: #b8b8b8;">Results: <span style="color: #ff6b35;">Data table or chart would be rendered here based on the query results.</span></p>
+                                    `;
+                                } else if (item.type === 'table') {
+                                    // Render table with columns and data
+                                    let tableHTML = `
+                                        <h4 style="color: #e8e8e8; margin-bottom: 10px;">Query Results Table:</h4>
+                                        <div style="overflow-x: auto; margin-bottom: 10px;">
+                                            <table style="width: 100%; border-collapse: collapse; background: #2d2d2d; color: #e8e8e8;">
+                                                <thead>
+                                                    <tr style="background: #1a1a1a;">
+                                    `;
+                                    if (item.columns && item.columns.length > 0) {
+                                        item.columns.forEach(col => {
+                                            tableHTML += `<th style="padding: 8px; text-align: left; border-bottom: 1px solid #555;">${col}</th>`;
+                                        });
+                                    }
+                                    tableHTML += `
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                    `;
+                                    if (item.data && item.data.length > 0) {
+                                        item.data.forEach(row => {
+                                            tableHTML += '<tr style="border-bottom: 1px solid #555;">';
+                                            Object.values(row).forEach(cell => {
+                                                tableHTML += `<td style="padding: 8px;">${cell || ''}</td>`;
+                                            });
+                                            tableHTML += '</tr>';
+                                        });
+                                    } else {
+                                        tableHTML += '<tr><td style="padding: 8px; text-align: center; color: #b8b8b8;">No data rows returned</td></tr>';
+                                    }
+                                    tableHTML += `
+                                                </tbody>
+                                            </table>
                                         </div>
                                     `;
+                                    resultDiv.innerHTML = tableHTML;
+                                } else if (item.type === 'chart') {
+                                    resultDiv.innerHTML = `
+                                        <h4 style="color: #e8e8e8; margin-bottom: 10px;">Generated Chart:</h4>
+                                        <p style="color: #b8b8b8; margin-bottom: 10px;"><strong>Title:</strong> ${item.title}</p>
+                                        <p style="color: #b8b8b8; margin-bottom: 10px;"><strong>Type:</strong> ${item.type}</p>
+                                        <p style="color: #ff6b35;">${item.data_summary}</p>
+                                        <p style="color: #b8b8b8;">(Interactive chart would be rendered here using the data points.)</p>
+                                    `;
+                                } else if (item.type === 'unknown') {
+                                    resultDiv.innerHTML = `
+                                        <h4 style="color: #e8e8e8; margin-bottom: 10px;">Additional Response:</h4>
+                                        <p style="color: #b8b8b8;">${item.content}</p>
+                                    `;
                                 }
+                                resultsContainer.appendChild(resultDiv);
                             });
+                        } else {
+                            resultsContainer.innerHTML = '<div style="color: #b8b8b8; padding: 15px; text-align: center;">No results found for this query. Try rephrasing your question.</div>';
                         }
-                        
-                        // Add results to dashboard
-                        const chartContainer = genieButton.closest('.chart-container');
-                        chartContainer.appendChild(resultsContainer);
                         
                         genieInput.value = '';
                         
                     } catch (error) {
                         console.error('Genie query failed:', error);
+                        resultsContainer.innerHTML = '<div style="color: #dc3545; padding: 15px; background: #2e1a1a; border-radius: 6px; margin-top: 10px;">Failed to query Genie. Please check your connection and try again.</div>';
+                        resultsContainer.style.display = 'block';
                         alert('Failed to query Genie. Please try again.');
                     } finally {
                         genieButton.textContent = 'Query Gold Table';
                         genieButton.disabled = false;
+                    }
+                });
+                
+                // Allow Enter key to submit query
+                genieInput.addEventListener('keypress', function(e) {
+                    if (e.key === 'Enter') {
+                        genieButton.click();
                     }
                 });
             }
