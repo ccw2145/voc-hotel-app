@@ -1,0 +1,1082 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Lakehouse Inn - Voice of Customer</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', sans-serif;
+            background: linear-gradient(135deg, #1a1a1a 0%, #2d2d2d 100%);
+            min-height: 100vh;
+            color: #e8e8e8;
+        }
+
+        .header {
+            background: #1a1a1a;
+            border-bottom: 1px solid #333;
+            padding: 20px 0;
+            box-shadow: 0 2px 20px rgba(0, 0, 0, 0.3);
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+
+        .header-content {
+            max-width: 1200px;
+            margin: 0 auto;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0 20px;
+        }
+
+        .logo {
+            font-size: 1.8em;
+            font-weight: bold;
+            color: #ff6b35;
+        }
+
+        .nav-tabs {
+            display: flex;
+            gap: 10px;
+        }
+
+        .nav-tab {
+            padding: 12px 24px;
+            background: transparent;
+            border: 2px solid #ff6b35;
+            border-radius: 6px;
+            color: #ff6b35;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-weight: 500;
+        }
+
+        .nav-tab:hover {
+            background: #ff6b35;
+            color: #1a1a1a;
+        }
+
+        .nav-tab.active {
+            background: #ff6b35;
+            color: #1a1a1a;
+        }
+
+        .main-content {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 30px 20px;
+        }
+
+        .screen {
+            display: none;
+            background: #2d2d2d;
+            border: 1px solid #404040;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+            padding: 40px;
+            margin-bottom: 30px;
+        }
+
+        .screen.active {
+            display: block;
+        }
+
+        .screen-title {
+            font-size: 2.2em;
+            color: #e8e8e8;
+            margin-bottom: 20px;
+            font-weight: 600;
+        }
+
+        .screen-subtitle {
+            font-size: 1.1em;
+            color: #b8b8b8;
+            margin-bottom: 30px;
+            line-height: 1.6;
+        }
+
+        .action-button {
+            background: #ff6b35;
+            color: #1a1a1a;
+            border: none;
+            padding: 15px 30px;
+            border-radius: 6px;
+            font-size: 1.1em;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            margin-bottom: 30px;
+        }
+
+        .action-button:hover {
+            background: #e55a2b;
+            transform: translateY(-1px);
+        }
+
+        .kpi-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+
+        .kpi-card {
+            background: #404040;
+            border: 1px solid #555;
+            color: #e8e8e8;
+            padding: 25px;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+        }
+
+        .kpi-value {
+            font-size: 2.5em;
+            font-weight: bold;
+            margin-bottom: 5px;
+            color: #ff6b35;
+        }
+
+        .kpi-label {
+            font-size: 1em;
+            color: #b8b8b8;
+        }
+
+        .kpi-trend {
+            font-size: 0.9em;
+            margin-top: 10px;
+            color: #b8b8b8;
+        }
+
+        .chart-container {
+            background: #404040;
+            border: 1px solid #555;
+            border-radius: 8px;
+            padding: 30px;
+            margin-bottom: 30px;
+            text-align: center;
+        }
+
+        .dropdown-container {
+            margin-bottom: 30px;
+        }
+
+        .dropdown {
+            padding: 12px 20px;
+            border: 2px solid #555;
+            border-radius: 6px;
+            font-size: 1.1em;
+            width: 300px;
+            background: #404040;
+            color: #e8e8e8;
+        }
+
+        .summary-section {
+            background: #404040;
+            border: 1px solid #555;
+            border-radius: 8px;
+            padding: 30px;
+            margin-bottom: 30px;
+        }
+
+        .aspect-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 15px;
+            border-bottom: 1px solid #555;
+            color: #e8e8e8;
+        }
+
+        .aspect-status {
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-size: 0.9em;
+            font-weight: 500;
+        }
+
+        .status-good {
+            background: #d4edda;
+            color: #155724;
+        }
+
+        .status-warning {
+            background: #fff3cd;
+            color: #856404;
+        }
+
+        .status-critical {
+            background: #f8d7da;
+            color: #721c24;
+        }
+
+        .email-preview {
+            background: #1a1a1a;
+            border: 2px solid #555;
+            border-radius: 6px;
+            padding: 20px;
+            margin-top: 20px;
+            font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+            white-space: pre-wrap;
+            color: #e8e8e8;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: #666;
+        }
+
+        /* Scanning Interface Styles */
+        .scan-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 30px;
+            padding-bottom: 20px;
+            border-bottom: 1px solid #555;
+        }
+
+        .scan-title {
+            font-size: 2.2em;
+            font-weight: 600;
+            color: #e8e8e8;
+            margin: 0 0 5px 0;
+        }
+
+        .scan-subtitle {
+            color: #b8b8b8;
+            font-size: 1.1em;
+            margin: 0;
+        }
+
+        .scan-controls {
+            display: flex;
+            gap: 10px;
+        }
+
+        .scan-btn {
+            padding: 10px 20px;
+            border: 1px solid #555;
+            border-radius: 6px;
+            background: #404040;
+            cursor: pointer;
+            font-size: 0.95em;
+            font-weight: 500;
+            transition: all 0.2s ease;
+            color: #e8e8e8;
+        }
+
+        .scan-btn-primary {
+            background: #ff6b35;
+            color: #1a1a1a;
+            border-color: #ff6b35;
+        }
+
+        .scan-btn-primary:hover {
+            background: #e55a2b;
+        }
+
+        .scan-btn-secondary {
+            color: #e8e8e8;
+            border-color: #666;
+        }
+
+        .scan-btn-secondary:hover {
+            background: #555;
+        }
+
+        .scan-btn-dark {
+            background: #1a1a1a;
+            color: #e8e8e8;
+            border-color: #333;
+        }
+
+        .scan-btn-dark:hover {
+            background: #000;
+        }
+
+        .scan-content {
+            display: flex;
+            gap: 30px;
+        }
+
+        .scan-main {
+            flex: 1;
+        }
+
+        .scan-progress-header h2 {
+            font-size: 1.5em;
+            color: #e8e8e8;
+            margin: 0 0 25px 0;
+            font-weight: 500;
+        }
+
+        .property-results {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+
+        .property-result {
+            display: flex;
+            align-items: flex-start;
+            gap: 15px;
+            padding: 20px;
+            border-radius: 10px;
+            border-left: 4px solid transparent;
+        }
+
+        .result-good {
+            background: #1a2e1a;
+            border-left-color: #28a745;
+        }
+
+        .result-warning {
+            background: #2e2a1a;
+            border-left-color: #ff6b35;
+        }
+
+        .result-critical {
+            background: #2e1a1a;
+            border-left-color: #dc3545;
+        }
+
+        .result-scanning {
+            background: #404040;
+            border-left-color: #ff6b35;
+        }
+
+        .result-icon {
+            font-size: 1.2em;
+            width: 24px;
+            height: 24px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-top: 2px;
+        }
+
+        .scanning-spinner {
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
+
+        .result-content {
+            flex: 1;
+        }
+
+        .result-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 8px;
+        }
+
+        .property-name {
+            font-weight: 500;
+            color: #e8e8e8;
+        }
+
+        .scan-time {
+            color: #b8b8b8;
+            font-size: 0.9em;
+            font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+        }
+
+        .result-details {
+            color: #b8b8b8;
+            font-size: 0.95em;
+            margin-bottom: 8px;
+        }
+
+        .result-mentions {
+            color: #b8b8b8;
+            font-size: 0.9em;
+            margin-bottom: 15px;
+        }
+
+        .quick-action {
+            color: #ff6b35;
+            font-size: 0.9em;
+            font-style: italic;
+        }
+
+        .result-actions {
+            display: flex;
+            gap: 10px;
+        }
+
+        .action-btn {
+            padding: 8px 16px;
+            border: 1px solid #555;
+            border-radius: 6px;
+            background: #404040;
+            cursor: pointer;
+            font-size: 0.9em;
+            transition: all 0.2s ease;
+            color: #e8e8e8;
+        }
+
+        .action-btn-primary {
+            background: #ff6b35;
+            color: #1a1a1a;
+            border-color: #ff6b35;
+        }
+
+        .action-btn-primary:hover {
+            background: #e55a2b;
+        }
+
+        .action-btn-secondary {
+            color: #e8e8e8;
+            border-color: #666;
+        }
+
+        .action-btn-secondary:hover {
+            background: #555;
+        }
+
+        .scan-sidebar {
+            width: 300px;
+            background: #404040;
+            border: 1px solid #555;
+            border-radius: 8px;
+            padding: 25px;
+            height: fit-content;
+        }
+
+        .scan-stats {
+            margin-bottom: 30px;
+        }
+
+        .stat-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 12px 0;
+            border-bottom: 1px solid #555;
+        }
+
+        .stat-item:last-child {
+            border-bottom: none;
+        }
+
+        .stat-label {
+            color: #b8b8b8;
+            font-size: 0.95em;
+        }
+
+        .stat-value {
+            font-weight: 600;
+            color: #e8e8e8;
+        }
+
+        .critical-stat .stat-value {
+            color: #dc3545;
+        }
+
+        .warning-stat .stat-value {
+            color: #ff6b35;
+        }
+
+        .stat-number {
+            font-size: 1.5em;
+            font-weight: bold;
+            margin-left: 10px;
+        }
+
+        .top-aspects h3 {
+            color: #e8e8e8;
+            font-size: 1.1em;
+            margin: 0 0 15px 0;
+            font-weight: 600;
+        }
+
+        .aspect-list {
+            list-style: none;
+            padding: 0;
+            margin: 0 0 30px 0;
+        }
+
+        .aspect-list li {
+            padding: 8px 0;
+            color: #b8b8b8;
+            font-size: 0.95em;
+        }
+
+        .aspect-list li:before {
+            content: "• ";
+            color: #ff6b35;
+            font-weight: bold;
+            margin-right: 8px;
+        }
+
+        .recent-actions h3 {
+            color: #e8e8e8;
+            font-size: 1.1em;
+            margin: 0 0 15px 0;
+            font-weight: 600;
+        }
+
+        .action-summary {
+            color: #b8b8b8;
+            font-size: 0.95em;
+            padding: 4px 0;
+        }
+
+        @media (max-width: 768px) {
+            .header-content {
+                flex-direction: column;
+                gap: 20px;
+            }
+            
+            .nav-tabs {
+                flex-wrap: wrap;
+                justify-content: center;
+            }
+            
+            .nav-tab {
+                padding: 10px 16px;
+                font-size: 0.9em;
+            }
+            
+            .screen {
+                padding: 20px;
+            }
+            
+            .screen-title {
+                font-size: 1.8em;
+            }
+
+            .scan-header {
+                flex-direction: column;
+                gap: 20px;
+            }
+
+            .scan-content {
+                flex-direction: column;
+            }
+
+            .scan-sidebar {
+                width: 100%;
+            }
+
+            .scan-controls {
+                justify-content: center;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <div class="header-content">
+            <div class="logo">🏨 Lakehouse Inn Voice of Customer</div>
+            <div class="nav-tabs">
+                <button class="nav-tab active" onclick="showScreen('diagnostics')">Real Time Diagnostics</button>
+                <button class="nav-tab" onclick="showScreen('dashboard')">Property Health Dashboard</button>
+                <button class="nav-tab" onclick="showScreen('location')">Location Detail</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="main-content">
+        <!-- Screen 1: Real Time Diagnostics - Live Scanning Interface -->
+        <div id="diagnostics" class="screen active">
+            <!-- Scan Header with Controls -->
+            <div class="scan-header">
+                <div class="scan-title-section">
+                    <h1 class="scan-title">Lakehouse Inn VoC Scan</h1>
+                    <p class="scan-subtitle">Scanning 120 properties across 20 aspects</p>
+                </div>
+                <div class="scan-controls">
+                    <button class="scan-btn scan-btn-primary" onclick="runScan()">Run now</button>
+                    <button class="scan-btn scan-btn-secondary" onclick="cancelScan()">Cancel</button>
+                    <button class="scan-btn scan-btn-dark" onclick="toggleAutoRun()">Auto-run</button>
+                </div>
+            </div>
+
+            <!-- Main Scanning Content Area -->
+            <div class="scan-content">
+                <!-- Left Side: Scanning Progress and Results -->
+                <div class="scan-main">
+                    <div class="scan-progress-header">
+                        <h2>Checking anomalies for 120 properties</h2>
+                    </div>
+
+                    <!-- Property Scan Results -->
+                    <div class="property-results">
+                        <!-- Good Property Result -->
+                        <div class="property-result result-good">
+                            <div class="result-icon">✓</div>
+                            <div class="result-content">
+                                <div class="result-header">
+                                    <span class="property-name">Newark, NJ — complete. No issues found.</span>
+                                    <span class="scan-time">0:01</span>
+                                </div>
+                                <div class="result-details">
+                                    Reviews: 134 &nbsp;&nbsp; Avg rating: 4.2 &nbsp;&nbsp; Top theme: staff_friendliness
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Warning Property Result -->
+                        <div class="property-result result-warning">
+                            <div class="result-icon">⚠</div>
+                            <div class="result-content">
+                                <div class="result-header">
+                                    <span class="property-name">San Jose, CA — complete. No issues found</span>
+                                    <span class="scan-time">0:02</span>
+                                </div>
+                                <div class="result-details">
+                                    Aspect: wifi_connectivity &nbsp;&nbsp; Signal: -22% vs 28d baseline &nbsp;&nbsp; (↑5.02)
+                                </div>
+                                <div class="quick-action">
+                                    Quick next step: Share Wi-Fi quick fixes
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Critical Property Result -->
+                        <div class="property-result result-critical">
+                            <div class="result-icon">⚠</div>
+                            <div class="result-content">
+                                <div class="result-header">
+                                    <span class="property-name">Chicago O'Hare, IL — issue found</span>
+                                    <span class="scan-time">0:02</span>
+                                </div>
+                                <div class="result-details">
+                                    Aspect: cleanliness &nbsp;&nbsp; Signal: -31% vs 28d baseline
+                                </div>
+                                <div class="result-mentions">
+                                    Mentions: 29 last 2d &nbsp;&nbsp; (↑2.9x)
+                                </div>
+                                <div class="result-actions">
+                                    <button class="action-btn action-btn-primary" onclick="openPropertyDetail('chicago-ohare')">Open detail</button>
+                                    <button class="action-btn action-btn-secondary" onclick="deferToSummary('chicago-ohare')">Defer to Summary tab</button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Good Property Result -->
+                        <div class="property-result result-good">
+                            <div class="result-icon">✓</div>
+                            <div class="result-content">
+                                <div class="result-header">
+                                    <span class="property-name">Tampa, FL — complete. No issues found.</span>
+                                    <span class="scan-time">0:03</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Scanning in Progress -->
+                        <div class="property-result result-scanning">
+                            <div class="result-icon scanning-spinner">⟳</div>
+                            <div class="result-content">
+                                <div class="result-header">
+                                    <span class="property-name">Denver Downtown — scanning...</span>
+                                    <span class="scan-time">0:03</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Right Side: Scan Summary -->
+                <div class="scan-sidebar">
+                    <div class="scan-stats">
+                        <div class="stat-item">
+                            <div class="stat-label">Properties scanned:</div>
+                            <div class="stat-value">52 of 120</div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="stat-label">Anomalies:</div>
+                            <div class="stat-value">8 total</div>
+                        </div>
+                        <div class="stat-item critical-stat">
+                            <div class="stat-label">Critical:</div>
+                            <div class="stat-value">3</div>
+                            <div class="stat-number">5</div>
+                        </div>
+                        <div class="stat-item warning-stat">
+                            <div class="stat-label">Warning:</div>
+                            <div class="stat-value">5</div>
+                        </div>
+                    </div>
+
+                    <div class="top-aspects">
+                        <h3>Top affected aspects this run</h3>
+                        <ul class="aspect-list">
+                            <li>cleanliness</li>
+                            <li>wifi_connectivity</li>
+                            <li>breakfast_quality</li>
+                        </ul>
+                    </div>
+
+                    <div class="recent-actions">
+                        <h3>Recent actions:</h3>
+                        <div class="action-summary">2 emails sent</div>
+                        <div class="action-summary">• 1 ticket opened</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Screen 2: Property Health Dashboard -->
+        <div id="dashboard" class="screen">
+            <h1 class="screen-title">📊 Property Health Dashboard</h1>
+            <p class="screen-subtitle">
+                Comprehensive KPI tracking with interactive charts and Genie AI integration for querying our gold table data.
+            </p>
+
+            <div class="kpi-grid">
+                <div class="kpi-card">
+                    <div class="kpi-value">4.6/5</div>
+                    <div class="kpi-label">Average Rating</div>
+                    <div class="kpi-trend">Across all properties</div>
+                </div>
+                <div class="kpi-card">
+                    <div class="kpi-value">87%</div>
+                    <div class="kpi-label">Response Rate</div>
+                    <div class="kpi-trend">Guest feedback</div>
+                </div>
+                <div class="kpi-card">
+                    <div class="kpi-value">12min</div>
+                    <div class="kpi-label">Avg Response Time</div>
+                    <div class="kpi-trend">Issue resolution</div>
+                </div>
+            </div>
+
+            <div class="chart-container">
+                <h3>📈 Satisfaction Trends (Last 30 Days)</h3>
+                <p style="color: #666; margin-top: 20px;">Interactive charts will be displayed here showing satisfaction trends, review volume, and sentiment analysis across all properties.</p>
+            </div>
+
+            <div class="chart-container">
+                <h3>🤖 Genie AI Query Interface</h3>
+                <p style="color: #666; margin-bottom: 20px;">Query our gold table data using natural language</p>
+                <input type="text" placeholder="Ask Genie: 'Show me properties with declining satisfaction scores'" style="width: 100%; padding: 15px; border: 2px solid #ddd; border-radius: 10px; font-size: 1.1em;">
+                <button class="action-button" style="margin-top: 15px;">Query Gold Table</button>
+            </div>
+        </div>
+
+        <!-- Screen 3: Location Detail + Proposed Email -->
+        <div id="location" class="screen">
+            <h1 class="screen-title">🏨 Location Detail & Communication</h1>
+            <p class="screen-subtitle">
+                Select a property to view detailed analysis and generate prescriptive recommendations with automated email communications.
+            </p>
+
+            <div class="dropdown-container">
+                <label for="property-select" style="display: block; margin-bottom: 10px; font-weight: 500;">Select Property:</label>
+                <select id="property-select" class="dropdown" onchange="loadPropertyDetail()">
+                    <option value="">Choose a property...</option>
+                    <option value="denver-downtown">Denver Downtown</option>
+                    <option value="miami-beach">Miami Beach</option>
+                    <option value="chicago-loop">Chicago Loop</option>
+                    <option value="austin-central">Austin Central</option>
+                    <option value="seattle-waterfront">Seattle Waterfront</option>
+                </select>
+            </div>
+
+            <div id="property-details" style="display: none;">
+                <div class="summary-section">
+                    <h3 id="property-summary-title">🔍 Property Health Summary</h3>
+                    <div id="property-aspects">
+                        <!-- Dynamic content will be loaded here -->
+                    </div>
+                </div>
+
+                <div class="summary-section" id="recommendations-section">
+                    <h3>💡 Prescriptive Recommendations</h3>
+                    <div id="recommendations-content">
+                        <!-- Dynamic recommendations will be loaded here -->
+                    </div>
+                </div>
+
+                <div class="summary-section">
+                    <h3>📧 Generated Communication</h3>
+                    <button class="action-button" onclick="generateEmail()">Generate Manager Email</button>
+                    <div class="email-preview" id="email-content" style="display: none;">
+                        <!-- Dynamic email content will be loaded here -->
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function showScreen(screenId) {
+            // Hide all screens
+            document.querySelectorAll('.screen').forEach(screen => {
+                screen.classList.remove('active');
+            });
+            
+            // Remove active class from all tabs
+            document.querySelectorAll('.nav-tab').forEach(tab => {
+                tab.classList.remove('active');
+            });
+            
+            // Show selected screen
+            document.getElementById(screenId).classList.add('active');
+            
+            // Add active class to clicked tab
+            event.target.classList.add('active');
+        }
+
+        // Scanning Interface Functions
+        function runScan() {
+            alert('🚀 Starting VoC Scan...\n\nInitiating real-time anomaly detection across all 120 Lakehouse Inn properties. This will analyze guest feedback across 20 different aspects.');
+        }
+
+        function cancelScan() {
+            alert('⏹️ Scan Cancelled\n\nThe current scanning operation has been stopped. You can restart it anytime using the "Run now" button.');
+        }
+
+        function toggleAutoRun() {
+            alert('🔄 Auto-run Toggle\n\nAuto-run mode will automatically initiate scans at regular intervals to ensure continuous monitoring of guest feedback.');
+        }
+
+        function openPropertyDetail(propertyId) {
+            // Switch to Location Detail screen and load the property
+            showScreen('location');
+            const select = document.getElementById('property-select');
+            select.value = propertyId;
+            loadPropertyDetail();
+            alert(`📋 Opening detailed analysis for ${propertyId.replace('-', ' ').replace(/\b\w/g, l => l.toUpperCase())}\n\nSwitching to Location Detail screen with comprehensive property analysis.`);
+        }
+
+        function deferToSummary(propertyId) {
+            alert(`📊 Deferred to Summary\n\n${propertyId.replace('-', ' ').replace(/\b\w/g, l => l.toUpperCase())} has been added to the summary queue for batch processing and review.`);
+        }
+
+        // API helper functions
+        async function apiCall(endpoint, options = {}) {
+            try {
+                const response = await fetch(endpoint, {
+                    headers: {
+                        'Content-Type': 'application/json',
+                        ...options.headers
+                    },
+                    ...options
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                
+                return await response.json();
+            } catch (error) {
+                console.error('API call failed:', error);
+                throw error;
+            }
+        }
+
+        async function loadPropertyDetail() {
+            const select = document.getElementById('property-select');
+            const details = document.getElementById('property-details');
+            const propertyId = select.value;
+            
+            if (propertyId) {
+                try {
+                    // Show loading state
+                    details.style.display = 'block';
+                    document.getElementById('property-aspects').innerHTML = '<p>Loading property details...</p>';
+                    
+                    // Fetch property details from API
+                    const propertyData = await apiCall(`/api/properties/${propertyId}/details`);
+                    
+                    // Update title
+                    document.getElementById('property-summary-title').textContent = `🔍 Property Health Summary - ${propertyData.name}`;
+                    
+                    // Update aspects
+                    const aspectsContainer = document.getElementById('property-aspects');
+                    aspectsContainer.innerHTML = '';
+                    
+                    propertyData.aspects.forEach(aspect => {
+                        const aspectDiv = document.createElement('div');
+                        aspectDiv.className = 'aspect-item';
+                        
+                        const statusClass = aspect.status === 'critical' ? 'status-critical' : 
+                                           aspect.status === 'warning' ? 'status-warning' : 
+                                           aspect.status === 'excellent' ? 'status-good' : 'status-good';
+                        
+                        const statusText = aspect.status === 'critical' ? `Critical - ${aspect.percentage}% Negative` :
+                                         aspect.status === 'warning' ? `Warning - ${aspect.percentage}% Negative` :
+                                         aspect.status === 'excellent' ? `Excellent - ${aspect.percentage}% Negative` :
+                                         `Good - ${aspect.percentage}% Negative`;
+                        
+                        aspectDiv.innerHTML = `
+                            <span><strong>${aspect.name}</strong></span>
+                            <span class="aspect-status ${statusClass}">${statusText}</span>
+                        `;
+                        
+                        aspectsContainer.appendChild(aspectDiv);
+                    });
+                    
+                    // Update recommendations
+                    const recommendationsContainer = document.getElementById('recommendations-content');
+                    recommendationsContainer.innerHTML = '';
+                    
+                    if (propertyData.recommendations && propertyData.recommendations.length > 0) {
+                        const recList = document.createElement('ul');
+                        recList.style.listStyle = 'none';
+                        recList.style.padding = '0';
+                        
+                        propertyData.recommendations.forEach(rec => {
+                            const recItem = document.createElement('li');
+                            recItem.style.padding = '10px 0';
+                            recItem.style.borderBottom = '1px solid #555';
+                            recItem.style.color = '#e8e8e8';
+                            
+                            recItem.innerHTML = `
+                                <strong>🎯 ${rec.aspect} (${rec.priority}):</strong> ${rec.action}
+                            `;
+                            recList.appendChild(recItem);
+                            
+                            if (rec.action_items && rec.action_items.length > 0) {
+                                const actionItem = document.createElement('li');
+                                actionItem.style.padding = '10px 0';
+                                actionItem.style.borderBottom = '1px solid #555';
+                                actionItem.style.color = '#e8e8e8';
+                                actionItem.innerHTML = `<strong>📋 Action Items:</strong> ${rec.action_items.join(', ')}`;
+                                recList.appendChild(actionItem);
+                            }
+                            
+                            if (rec.expected_impact) {
+                                const impactItem = document.createElement('li');
+                                impactItem.style.padding = '10px 0';
+                                impactItem.style.color = '#e8e8e8';
+                                impactItem.innerHTML = `<strong>📈 Expected Impact:</strong> ${rec.expected_impact}`;
+                                recList.appendChild(impactItem);
+                            }
+                        });
+                        
+                        recommendationsContainer.appendChild(recList);
+                    } else {
+                        recommendationsContainer.innerHTML = '<p style="color: #28a745; font-weight: 500;">✅ No critical issues identified. This property is performing well across all aspects.</p>';
+                    }
+                    
+                    // Hide email content when switching properties
+                    document.getElementById('email-content').style.display = 'none';
+                    
+                } catch (error) {
+                    console.error('Failed to load property details:', error);
+                    document.getElementById('property-aspects').innerHTML = '<p style="color: #dc3545;">Failed to load property details. Please try again.</p>';
+                }
+            } else {
+                details.style.display = 'none';
+            }
+        }
+
+        async function generateEmail() {
+            const select = document.getElementById('property-select');
+            const propertyId = select.value;
+            const emailContent = document.getElementById('email-content');
+            
+            if (propertyId) {
+                try {
+                    // Show loading state
+                    emailContent.textContent = 'Generating email...';
+                    emailContent.style.display = 'block';
+                    
+                    // Call API to generate email
+                    const emailResult = await apiCall(`/api/properties/${propertyId}/generate-email`, {
+                        method: 'POST'
+                    });
+                    
+                    // Display the generated email
+                    emailContent.textContent = emailResult.email_content;
+                    
+                    // Show success message
+                    setTimeout(() => {
+                        alert(`📧 Email generated successfully for ${emailResult.property_name}!\n\nThe communication has been prepared and is ready for review. You can now send this directly to the property manager or make additional edits as needed.`);
+                    }, 500);
+                    
+                } catch (error) {
+                    console.error('Failed to generate email:', error);
+                    emailContent.textContent = 'Failed to generate email. Please try again.';
+                    emailContent.style.color = '#dc3545';
+                }
+            }
+        }
+
+        // Add event listener for Genie query
+        document.addEventListener('DOMContentLoaded', function() {
+            const genieInput = document.querySelector('input[placeholder*="Ask Genie"]');
+            const genieButton = document.querySelector('#dashboard .action-button');
+            
+            if (genieInput && genieButton) {
+                genieButton.addEventListener('click', async function() {
+                    const query = genieInput.value.trim();
+                    if (!query) {
+                        alert('Please enter a query for Genie');
+                        return;
+                    }
+                    
+                    try {
+                        genieButton.textContent = 'Querying...';
+                        genieButton.disabled = true;
+                        
+                        const result = await apiCall('/api/dashboard/genie-query', {
+                            method: 'POST',
+                            body: JSON.stringify({ query: query })
+                        });
+                        
+                        // Display results in a new section
+                        const resultsContainer = document.createElement('div');
+                        resultsContainer.className = 'genie-results';
+                        resultsContainer.style.marginTop = '20px';
+                        resultsContainer.style.padding = '20px';
+                        resultsContainer.style.background = '#404040';
+                        resultsContainer.style.borderRadius = '8px';
+                        resultsContainer.style.border = '1px solid #555';
+                        
+                        if (result.error) {
+                            resultsContainer.innerHTML = `<p style="color: #dc3545;">Error: ${result.error}</p>`;
+                        } else {
+                            result.results.forEach((item, index) => {
+                                if (item.type === 'text') {
+                                    resultsContainer.innerHTML += `<p>${item.content}</p>`;
+                                } else if (item.type === 'query') {
+                                    resultsContainer.innerHTML += `
+                                        <div style="margin-bottom: 15px;">
+                                            <h4>Query: ${item.description}</h4>
+                                            <pre style="background: #1a1a1a; padding: 10px; border-radius: 4px; overflow-x: auto;">${item.query}</pre>
+                                            <p style="color: #b8b8b8;">Data would be displayed here (table/chart)</p>
+                                        </div>
+                                    `;
+                                }
+                            });
+                        }
+                        
+                        // Add results to dashboard
+                        const chartContainer = genieButton.closest('.chart-container');
+                        chartContainer.appendChild(resultsContainer);
+                        
+                        genieInput.value = '';
+                        
+                    } catch (error) {
+                        console.error('Genie query failed:', error);
+                        alert('Failed to query Genie. Please try again.');
+                    } finally {
+                        genieButton.textContent = 'Query Gold Table';
+                        genieButton.disabled = false;
+                    }
+                });
+            }
+        });
+    </script>
+</body>
+</html>
