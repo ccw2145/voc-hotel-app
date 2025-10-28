@@ -171,6 +171,7 @@ def test_env_vars():
         "DATABRICKS_CLIENT_SECRET",
         "DATABRICKS_HOST",
         "MY_EMAIL",
+        "GENIE_SPACE_ID",
     ]
 
     print("\nTesting environment variables...")

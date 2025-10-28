@@ -8,18 +8,18 @@ import sys
 from typing import List, Dict, Any
 from datetime import datetime, timedelta
 
+# Load environment variables FIRST, before importing services
+load_dotenv()
+
 # Add src directory to Python path
 sys.path.append(os.path.join(os.path.dirname(__file__), 'src'))
 
-# Import services
+# Import services (after env vars are loaded)
 from services.property_service import property_service
 from services.email_service import email_service
 from services.recommendations_service import recommendations_service
 from services.diagnostics_service import diagnostics_service
 from src.services.genie_service import genie_service
-
-# Load environment variables
-load_dotenv()
 
 app = FastAPI(
     title="Lakehouse Inn Voice of Customer",
