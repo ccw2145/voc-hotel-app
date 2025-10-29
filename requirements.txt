@@ -8,3 +8,4 @@ databricks-sql-connector
 dash
 dash-bootstrap-components
 pandas
+psycopg
