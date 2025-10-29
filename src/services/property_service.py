@@ -395,6 +395,77 @@ class PropertyService:
         
         return list(properties.values())
     
+    def get_aspects_coverage(self) -> Dict:
+        """Get aspects coverage: how many aspects have issues vs total possible aspects"""
+        # Get unique aspects from issues data
+        issues = self._get_issues_data()
+        aspects_with_issues = set()
+        for issue in issues:
+            aspect = issue.get('aspect')
+            if aspect:
+                aspects_with_issues.add(aspect)
+        
+        # Get total possible aspects from runbook
+        from services.recommendations_service import recommendations_service
+        runbook_data = recommendations_service._get_runbook_data()
+        
+        # Handle both dict and string formats
+        unique_aspects = set()
+        for item in runbook_data:
+            if isinstance(item, dict):
+                aspect = item.get('aspect')
+                if aspect:
+                    unique_aspects.add(aspect)
+            elif isinstance(item, str):
+                # If item is already a string aspect name
+                unique_aspects.add(item)
+        
+        total_possible_aspects = len(unique_aspects)
+        
+        return {
+            'aspects_with_issues': len(aspects_with_issues),
+            'total_aspects': total_possible_aspects
+        }
+    
+    def get_healthy_properties_grouped(self) -> Dict:
+        """Get healthy properties grouped by 'healthy' vs 'no_reviews'"""
+        all_properties = self.get_all_properties()
+        
+        # Get flagged property IDs from the issues table
+        issues = self._get_issues_data()
+        flagged_locations = set()
+        for issue in issues:
+            nms_open = float(issue.get('nms_open', 0))
+            if self._calculate_status(nms_open) in ['critical', 'warning']:
+                location = issue.get('location', 'Unknown')
+                flagged_locations.add(location)
+        
+        grouped = {
+            'healthy': [],  # Has reviews, no issues
+            'no_reviews': []  # No recent review data
+        }
+        
+        for prop in all_properties:
+            # Skip flagged properties
+            location = f"{prop['city']}, {prop['state']}"
+            if location in flagged_locations:
+                continue
+            
+            # Check if property has any review data in issues table
+            has_review_data = any(
+                issue.get('location') == location 
+                for issue in issues
+            )
+            
+            if has_review_data:
+                # Has reviews but no critical/warning issues
+                grouped['healthy'].append(prop)
+            else:
+                # No review data at all
+                grouped['no_reviews'].append(prop)
+        
+        return grouped
+    
     def get_diagnostics_kpis(self) -> Dict:
         """Calculate overall diagnostics KPIs using review_aspect_details table"""
         # Get total properties count from hotel_locations table (source of truth)
@@ -416,12 +487,17 @@ class PropertyService:
                 if self._calculate_status(nms_open) in ['critical', 'warning']:
                     flagged_properties.add(issue.get('location', 'Unknown'))
             
+            # Get aspects coverage
+            aspects_coverage = self.get_aspects_coverage()
+            
             return {
                 'avg_negative_reviews_7d': review_stats['avg_negative_reviews_7d'],
                 'properties_flagged': len(flagged_properties),
                 'total_properties': total_properties,
                 'overall_satisfaction': round(overall_satisfaction, 1),
                 'reviews_processed_today': review_stats['reviews_processed_today'],
+                'aspects_with_issues': aspects_coverage['aspects_with_issues'],
+                'total_aspects': aspects_coverage['total_aspects'],
                 'trends': {
                     'negative_reviews_change': 0,
                     'flagged_properties_change': 0,
@@ -432,6 +508,9 @@ class PropertyService:
         # Fallback to issues table
         issues = self._get_issues_data()
         
+        # Get aspects coverage
+        aspects_coverage = self.get_aspects_coverage()
+        
         if not issues:
             return {
                 'avg_negative_reviews_7d': 0,
@@ -439,6 +518,8 @@ class PropertyService:
                 'total_properties': total_properties,
                 'overall_satisfaction': 85.0,
                 'reviews_processed_today': 0,
+                'aspects_with_issues': aspects_coverage['aspects_with_issues'],
+                'total_aspects': aspects_coverage['total_aspects'],
                 'trends': {
                     'negative_reviews_change': 0,
                     'flagged_properties_change': 0,
@@ -463,6 +544,8 @@ class PropertyService:
             'total_properties': total_properties,
             'overall_satisfaction': round(overall_satisfaction, 1),
             'reviews_processed_today': len(issues),
+            'aspects_with_issues': aspects_coverage['aspects_with_issues'],
+            'total_aspects': aspects_coverage['total_aspects'],
             'trends': {
                 'negative_reviews_change': 0,
                 'flagged_properties_change': 0,

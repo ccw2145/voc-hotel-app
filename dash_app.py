@@ -290,20 +290,6 @@ def create_hq_properties():
         # Executive KPIs Section
         html.Div(id='hq-executive-kpis', className="mb-5"),
         
-        # Regional Performance Map Section
-        dbc.Container([
-            dbc.Card([
-                dbc.CardBody([
-                    html.H4("🗺️ Regional Performance Map", className="mb-3", style={'fontWeight': '600'}),
-                    html.P("Click on any location to jump to that property below", 
-                          className="text-muted mb-3",
-                          style={'fontSize': '0.95rem'}),
-                    dcc.Graph(id='properties-map', config={'displayModeBar': False}, 
-                             style={'height': '500px'}),
-                ], style={'padding': '1.5rem'})
-            ], style={'border': 'none', 'borderRadius': '12px'}, className="mb-5")
-        ], style={'maxWidth': '1400px'}),
-        
         # Analytics & Insights Section
         dbc.Container([
             dbc.Card([
@@ -322,6 +308,20 @@ def create_hq_properties():
                             html.Div(id='regional-comparison-chart')
                         ], md=12)
                     ], className="mt-4")
+                ], style={'padding': '1.5rem'})
+            ], style={'border': 'none', 'borderRadius': '12px'}, className="mb-5")
+        ], style={'maxWidth': '1400px'}),
+        
+        # Regional Performance Map Section
+        dbc.Container([
+            dbc.Card([
+                dbc.CardBody([
+                    html.H4("🗺️ Regional Performance Map", className="mb-3", style={'fontWeight': '600'}),
+                    html.P("Click on any location to jump to that property below", 
+                          className="text-muted mb-3",
+                          style={'fontSize': '0.95rem'}),
+                    dcc.Graph(id='properties-map', config={'displayModeBar': False}, 
+                             style={'height': '500px'}),
                 ], style={'padding': '1.5rem'})
             ], style={'border': 'none', 'borderRadius': '12px'}, className="mb-5")
         ], style={'maxWidth': '1400px'}),
@@ -741,7 +741,7 @@ def load_executive_kpis(screen):
         
         return dbc.Container([
             dbc.Row([
-                # Properties Flagged
+                # Locations Flagged (Combined)
                 dbc.Col([
                     dbc.Card([
                         dbc.CardBody([
@@ -750,10 +750,16 @@ def load_executive_kpis(screen):
                                     html.I(className="bi bi-exclamation-triangle", 
                                           style={'fontSize': '1.5rem', 'color': '#dc3545', 'marginBottom': '0.5rem'}),
                                 ]),
-                                html.H3(str(kpis['properties_flagged']), 
-                                       className="mb-1",
-                                       style={'fontWeight': '700', 'fontSize': '2.5rem', 'color': '#212529'}),
-                                html.P("Properties Flagged", 
+                                html.H3([
+                                    html.Span(str(kpis['properties_flagged']), 
+                                             style={'color': '#dc3545', 'fontWeight': '700'}),
+                                    html.Span(" / ", 
+                                             style={'color': '#6c757d', 'fontWeight': '400'}),
+                                    html.Span(str(kpis['total_properties']), 
+                                             style={'color': '#6c757d', 'fontWeight': '700'})
+                                ], className="mb-1",
+                                style={'fontSize': '2.5rem'}),
+                                html.P("Locations Flagged", 
                                       className="mb-2 text-muted",
                                       style={'fontSize': '0.95rem', 'fontWeight': '500'}),
                                 get_trend_indicator(kpis['trends'].get('flagged_properties_change', 0))
@@ -762,28 +768,7 @@ def load_executive_kpis(screen):
                     ], style={'border': 'none', 'borderRadius': '12px', 'height': '100%'})
                 ], md=6, lg=3, className="mb-4"),
                 
-                # Average Negative Reviews
-                dbc.Col([
-                    dbc.Card([
-                        dbc.CardBody([
-                            html.Div([
-                                html.Div([
-                                    html.I(className="bi bi-graph-down", 
-                                          style={'fontSize': '1.5rem', 'color': '#ffc107', 'marginBottom': '0.5rem'}),
-                                ]),
-                                html.H3(f"{kpis['avg_negative_reviews_7d']}%", 
-                                       className="mb-1",
-                                       style={'fontWeight': '700', 'fontSize': '2.5rem', 'color': '#212529'}),
-                                html.P("Avg Negative Reviews (7d)", 
-                                      className="mb-2 text-muted",
-                                      style={'fontSize': '0.95rem', 'fontWeight': '500'}),
-                                get_trend_indicator(kpis['trends'].get('negative_reviews_change', 0))
-                            ])
-                        ], style={'padding': '1.5rem'})
-                    ], style={'border': 'none', 'borderRadius': '12px', 'height': '100%'})
-                ], md=6, lg=3, className="mb-4"),
-                
-                # Overall Satisfaction
+                # Overall Satisfaction (Combined - showing positive metric)
                 dbc.Col([
                     dbc.Card([
                         dbc.CardBody([
@@ -794,11 +779,12 @@ def load_executive_kpis(screen):
                                 ]),
                                 html.H3(f"{kpis['overall_satisfaction']}%", 
                                        className="mb-1",
-                                       style={'fontWeight': '700', 'fontSize': '2.5rem', 'color': '#212529'}),
+                                       style={'fontWeight': '700', 'fontSize': '2.5rem', 'color': '#28a745'}),
                                 html.P("Overall Satisfaction", 
                                       className="mb-2 text-muted",
                                       style={'fontSize': '0.95rem', 'fontWeight': '500'}),
-                                get_trend_indicator(kpis['trends'].get('satisfaction_change', 0))
+                                html.Span(f"{kpis['avg_negative_reviews_7d']}% negative (7d)", 
+                                         style={'color': '#6c757d', 'fontSize': '0.875rem'})
                             ])
                         ], style={'padding': '1.5rem'})
                     ], style={'border': 'none', 'borderRadius': '12px', 'height': '100%'})
@@ -820,6 +806,32 @@ def load_executive_kpis(screen):
                                       className="mb-2 text-muted",
                                       style={'fontSize': '0.95rem', 'fontWeight': '500'}),
                                 html.Span("Today", style={'color': '#6c757d', 'fontSize': '0.875rem'})
+                            ])
+                        ], style={'padding': '1.5rem'})
+                    ], style={'border': 'none', 'borderRadius': '12px', 'height': '100%'})
+                ], md=6, lg=3, className="mb-4"),
+                
+                # Aspects Monitored
+                dbc.Col([
+                    dbc.Card([
+                        dbc.CardBody([
+                            html.Div([
+                                html.Div([
+                                    html.I(className="bi bi-list-check", 
+                                          style={'fontSize': '1.5rem', 'color': '#6c757d', 'marginBottom': '0.5rem'}),
+                                ]),
+                                html.H3([
+                                    html.Span(str(kpis['aspects_with_issues']), 
+                                             style={'color': '#dc3545', 'fontWeight': '700'}),
+                                    html.Span(" / ", 
+                                             style={'color': '#6c757d', 'fontWeight': '400'}),
+                                    html.Span(str(kpis['total_aspects']), 
+                                             style={'color': '#6c757d', 'fontWeight': '700'})
+                                ], className="mb-1",
+                                style={'fontSize': '2.5rem'}),
+                                html.P("Aspects Monitored", 
+                                      className="mb-0 text-muted",
+                                      style={'fontSize': '0.95rem', 'fontWeight': '500'}),
                             ])
                         ], style={'padding': '1.5rem'})
                     ], style={'border': 'none', 'borderRadius': '12px', 'height': '100%'})
@@ -914,6 +926,13 @@ def load_properties_map(screen):
                         hover_text = f"<b>{d['name']}</b><br>Status: {d['status']}<br>No issues - All clear!"
                     hover_texts.append(hover_text)
                 
+                # Only make flagged properties clickable (have customdata)
+                # Healthy properties won't trigger scroll since they're not in the accordion
+                if status in ['Critical', 'Warning']:
+                    customdata = [d['id'] for d in status_data]
+                else:
+                    customdata = None  # Healthy properties not clickable
+                
                 fig.add_trace(go.Scattergeo(
                     lon=[d['lon'] for d in status_data],
                     lat=[d['lat'] for d in status_data],
@@ -926,7 +945,7 @@ def load_properties_map(screen):
                     ),
                     name=status,
                     text=hover_texts,
-                    customdata=[d['id'] for d in status_data],
+                    customdata=customdata,
                     hovertemplate='%{text}<extra></extra>',
                 ))
         
@@ -978,11 +997,18 @@ def load_properties_map(screen):
 )
 def handle_map_click(click_data):
     if not click_data:
+        print("⚠️ Map clicked but no click_data")
         return None
     
     try:
         # Extract property ID from customdata
-        property_id = click_data['points'][0]['customdata']
+        customdata = click_data['points'][0].get('customdata')
+        
+        if not customdata:
+            print("⚠️ Map clicked but no customdata (probably a healthy property - not clickable)")
+            return None
+            
+        property_id = customdata
         print(f"\n{'='*60}")
         print(f"🗺️ MAP CLICKED")
         print(f"   Property ID: {property_id}")
@@ -991,6 +1017,7 @@ def handle_map_click(click_data):
         return property_id
     except Exception as e:
         print(f"❌ Error handling map click: {str(e)}")
+        print(f"   click_data: {click_data}")
         import traceback
         traceback.print_exc()
         return None
@@ -1195,7 +1222,7 @@ def load_flagged_properties_grouped(screen):
         accordion_content = [
             dbc.Accordion(
                 accordion_items,
-                start_collapsed=True,
+                start_collapsed=False,  # Start expanded so map clicks can scroll to visible properties
                 always_open=True,
                 flush=True,
                 style={'marginBottom': '1rem'}
@@ -1310,7 +1337,7 @@ def toggle_all_properties(n_clicks, is_open):
         return new_state, button_text
     return is_open, dash.no_update
 
-# Load expanded properties list
+# Load expanded properties list with accordion layout
 @app.callback(
     Output('all-properties-expanded-list', 'children'),
     Input('collapse-all-properties', 'is_open'),
@@ -1322,112 +1349,142 @@ def load_expanded_properties_list(is_open, screen):
         return html.Div()
     
     try:
-        from dash import dash_table
+        # Get grouped healthy properties
+        grouped_properties = property_service.get_healthy_properties_grouped()
+        healthy = grouped_properties['healthy']
+        no_reviews = grouped_properties['no_reviews']
         
-        properties = property_service.get_all_properties()
-        flagged = property_service.get_flagged_properties()
-        flagged_property_ids = set(prop['property_id'] for prop in flagged)
+        print(f"✅ Loaded {len(healthy)} healthy properties, {len(no_reviews)} properties with no reviews")
         
-        # Get city to region mapping
-        city_to_region = property_service._get_city_to_region_mapping()
+        accordion_items = []
         
-        non_flagged_properties = [
-            prop for prop in properties 
-            if prop['property_id'] not in flagged_property_ids
-        ]
-        
-        # Prepare data for DataTable
-        table_data = []
-        for prop in non_flagged_properties:
-            has_issues = prop.get('has_issues', False)
-            reviews_count = prop.get('reviews_count', 0)
-            status = "No reviews" if (not has_issues and reviews_count == 0) else "Healthy"
+        # Healthy Properties Accordion
+        if healthy:
+            healthy_props = []
+            for prop in healthy:
+                healthy_props.append(
+                    html.Div([
+                        dbc.Card([
+                            dbc.CardBody([
+                                html.Div([
+                                    # Left: Property name + location
+                                    html.Div([
+                                        html.Span(prop['name'], style={
+                                            'fontWeight': '600', 
+                                            'fontSize': '0.95rem', 
+                                            'color': '#212529'
+                                        }),
+                                        html.Span(f" • {prop['city']}, {prop['state']}", style={
+                                            'fontSize': '0.85rem',
+                                            'color': '#6c757d',
+                                            'marginLeft': '0.5rem'
+                                        })
+                                    ], style={'flex': '1'}),
+                                    
+                                    # Right: View button
+                                    dbc.Button(
+                                        "View", 
+                                        color="success", 
+                                        size="sm",
+                                        style={'fontWeight': '500', 'padding': '0.4rem 1rem', 'fontSize': '0.8rem'},
+                                        id={'type': 'view-property-btn', 'index': prop['property_id']},
+                                        n_clicks=0
+                                    )
+                                ], style={
+                                    'display': 'flex',
+                                    'alignItems': 'center',
+                                    'justifyContent': 'space-between',
+                                    'gap': '1rem'
+                                })
+                            ], style={'padding': '0.75rem 1rem'})
+                        ], style={
+                            'border': '1px solid #28a745',
+                            'borderLeft': '4px solid #28a745',
+                            'borderRadius': '6px',
+                            'backgroundColor': '#f0fff4',
+                            'marginBottom': '0.5rem'
+                        }, className="hover-shadow")
+                    ], id=f"property-card-{prop['property_id']}", style={'scrollMarginTop': '100px'})
+                )
             
-            # Get region from city with flexible matching
-            city = prop.get('city', 'Unknown')
-            region = city_to_region.get(city, None)
-            
-            # If no exact match, try case-insensitive
-            if region is None:
-                for mapped_city, mapped_region in city_to_region.items():
-                    if mapped_city.lower() == city.lower():
-                        region = mapped_region
-                        break
-            
-            if region is None:
-                region = 'Other'
-            
-            table_data.append({
-                'Property Name': prop['name'],
-                'City': prop['city'],
-                'State': prop['state'],
-                'Region': region,
-                'Status': status,
-                'property_id': prop['property_id']  # Hidden column for actions
-            })
-        
-        # Sort by region, then state, then city
-        table_data.sort(key=lambda x: (x['Region'], x['State'], x['City']))
-        
-        return html.Div([
-            html.P(f"Showing {len(table_data)} healthy properties", 
-                  className="text-muted mb-2", style={'fontSize': '0.9rem'}),
-            html.P("💡 Tip: Click column headers to sort. Use the filter boxes to search. Click any row to view property details.", 
-                  className="text-muted mb-3", style={'fontSize': '0.85rem', 'fontStyle': 'italic'}),
-            dash_table.DataTable(
-                id='all-properties-table',
-                data=table_data,
-                columns=[
-                    {'name': 'Property Name', 'id': 'Property Name', 'type': 'text'},
-                    {'name': 'City', 'id': 'City', 'type': 'text'},
-                    {'name': 'State', 'id': 'State', 'type': 'text'},
-                    {'name': 'Region', 'id': 'Region', 'type': 'text'},
-                    {'name': 'Status', 'id': 'Status', 'type': 'text'},
-                ],
-                style_table={'overflowX': 'auto'},
-                style_cell={
-                    'textAlign': 'left',
-                    'padding': '12px',
-                    'fontSize': '0.9rem',
-                    'fontFamily': 'inherit',
-                    'cursor': 'pointer'
-                },
-                style_header={
-                    'backgroundColor': '#f8f9fa',
-                    'fontWeight': '600',
-                    'borderBottom': '2px solid #dee2e6',
-                    'color': '#495057'
-                },
-                style_data={
-                    'border': '1px solid #dee2e6'
-                },
-                style_data_conditional=[
-                    {
-                        'if': {'row_index': 'odd'},
-                        'backgroundColor': '#f8f9fa'
-                    },
-                    {
-                        'if': {'column_id': 'Status', 'filter_query': '{Status} = "Healthy"'},
-                        'color': '#198754',
-                        'fontWeight': '500'
-                    },
-                    {
-                        'if': {'column_id': 'Status', 'filter_query': '{Status} = "No reviews"'},
-                        'color': '#6c757d',
-                        'fontWeight': '500'
-                    },
-                    {
-                        'if': {'state': 'active'},
-                        'backgroundColor': 'rgba(0, 123, 255, 0.1)',
-                        'border': '1px solid #007bff'
-                    }
-                ],
-                sort_action='native',
-                filter_action='native',
-                page_size=20,
-                page_action='native',
+            accordion_items.append(
+                dbc.AccordionItem(
+                    html.Div(healthy_props, style={'marginTop': '0.5rem'}),
+                    title=html.Div([
+                        html.Span("🌟 Healthy ", style={'fontWeight': '600'}),
+                        html.Span(f"({len(healthy)} properties)", style={'color': '#6c757d'})
+                    ]),
+                    item_id="healthy-properties"
+                )
             )
-        ], className="mt-3")
+        
+        # No Reviews Properties Accordion
+        if no_reviews:
+            no_reviews_props = []
+            for prop in no_reviews:
+                no_reviews_props.append(
+                    html.Div([
+                        dbc.Card([
+                            dbc.CardBody([
+                                html.Div([
+                                    # Left: Property name + location
+                                    html.Div([
+                                        html.Span(prop['name'], style={
+                                            'fontWeight': '600', 
+                                            'fontSize': '0.95rem', 
+                                            'color': '#212529'
+                                        }),
+                                        html.Span(f" • {prop['city']}, {prop['state']}", style={
+                                            'fontSize': '0.85rem',
+                                            'color': '#6c757d',
+                                            'marginLeft': '0.5rem'
+                                        })
+                                    ], style={'flex': '1'}),
+                                    
+                                    # Right: View button
+                                    dbc.Button(
+                                        "View", 
+                                        color="secondary", 
+                                        size="sm",
+                                        style={'fontWeight': '500', 'padding': '0.4rem 1rem', 'fontSize': '0.8rem'},
+                                        id={'type': 'view-property-btn', 'index': prop['property_id']},
+                                        n_clicks=0
+                                    )
+                                ], style={
+                                    'display': 'flex',
+                                    'alignItems': 'center',
+                                    'justifyContent': 'space-between',
+                                    'gap': '1rem'
+                                })
+                            ], style={'padding': '0.75rem 1rem'})
+                        ], style={
+                            'border': '1px solid #6c757d',
+                            'borderLeft': '4px solid #6c757d',
+                            'borderRadius': '6px',
+                            'backgroundColor': '#f8f9fa',
+                            'marginBottom': '0.5rem'
+                        }, className="hover-shadow")
+                    ], id=f"property-card-{prop['property_id']}", style={'scrollMarginTop': '100px'})
+                )
+            
+            accordion_items.append(
+                dbc.AccordionItem(
+                    html.Div(no_reviews_props, style={'marginTop': '0.5rem'}),
+                    title=html.Div([
+                        html.Span("📭 No New Reviews ", style={'fontWeight': '600'}),
+                        html.Span(f"({len(no_reviews)} properties)", style={'color': '#6c757d'})
+                    ]),
+                    item_id="no-reviews-properties"
+                )
+            )
+        
+        return dbc.Accordion(
+            accordion_items,
+            start_collapsed=False,
+            always_open=True,
+            flush=True,
+            style={'marginTop': '1rem'}
+        )
         
     except Exception as e:
         print(f"❌ Error loading expanded properties: {str(e)}")
@@ -1435,45 +1492,8 @@ def load_expanded_properties_list(is_open, screen):
         traceback.print_exc()
         return dbc.Alert(f"Error loading properties: {str(e)}", color="danger")
 
-# Handle table row clicks for All Properties
-@app.callback(
-    [Output('selected-property-id', 'data', allow_duplicate=True),
-     Output('current-screen', 'data', allow_duplicate=True)],
-    Input('all-properties-table', 'active_cell'),
-    State('all-properties-table', 'data'),
-    prevent_initial_call=True
-)
-def handle_table_row_click(active_cell, table_data):
-    print(f"\n{'='*80}")
-    print(f"📊 TABLE ROW CLICK CALLBACK!")
-    print(f"   active_cell: {active_cell}")
-    
-    if not active_cell or not table_data:
-        print(f"   ❌ No active cell or no data")
-        print(f"{'='*80}\n")
-        return dash.no_update, dash.no_update
-    
-    try:
-        row_index = active_cell['row']
-        row_data = table_data[row_index]
-        property_id = row_data.get('property_id')
-        
-        if not property_id:
-            print(f"   ❌ No property_id found in row data")
-            print(f"{'='*80}\n")
-            return dash.no_update, dash.no_update
-        
-        print(f"   ✅ Property selected from table: {property_id}")
-        print(f"   🔄 Navigating to hq-dashboard...")
-        print(f"{'='*80}\n")
-        
-        return property_id, 'hq-dashboard'
-    except Exception as e:
-        print(f"   ❌ Error handling table click: {e}")
-        import traceback
-        traceback.print_exc()
-        print(f"{'='*80}\n")
-        return dash.no_update, dash.no_update
+# Note: Healthy property cards now use same view-property-btn pattern as flagged properties
+# No separate table click handler needed - accordion cards have View buttons
 
 # Load analytics charts
 @app.callback(
@@ -1783,8 +1803,9 @@ def load_filtered_dashboard(property_id, screen):
         
         # Add filter parameters to the URL
         # The format for Databricks dashboard filters is: ?o=<workspace_id>&f_<page_id>~<filter_id>=<value>
-        filtered_url = f"{base_url}?o=604717363374831&f_a7cbab78~57a7e64b={encoded_location}"
-        
+        # filtered_url = f"{base_url}?o=604717363374831&f_a7cbab78~57a7e64b={encoded_location}"
+        filtered_url=f"https://fe-vm-voc-lakehouse-inn-workspace.cloud.databricks.com/embed/dashboardsv3/01f0ab936a8815ffbc5b0dd3d8ca0f9f?o=604717363374831&f_cda77b68%7E7b3b0339={encoded_location}&f_a7cbab78%7E27ece451=2025-06-30T00%253A00%253A00.000%7E2025-09-01T23%253A59%253A59.999&f_a7cbab78%7E1179387e=_all_"
+
         print(f"🗺️ Loading dashboard filtered for location: {location}")
         print(f"📊 Dashboard URL: {filtered_url}")
         
