@@ -741,28 +741,22 @@ def load_executive_kpis(screen):
         
         return dbc.Container([
             dbc.Row([
-                # Locations Flagged (Combined)
+                # Reviews Processed
                 dbc.Col([
                     dbc.Card([
                         dbc.CardBody([
                             html.Div([
                                 html.Div([
-                                    html.I(className="bi bi-exclamation-triangle", 
-                                          style={'fontSize': '1.5rem', 'color': '#dc3545', 'marginBottom': '0.5rem'}),
+                                    html.I(className="bi bi-file-earmark-text", 
+                                          style={'fontSize': '1.5rem', 'color': '#17a2b8', 'marginBottom': '0.5rem'}),
                                 ]),
-                                html.H3([
-                                    html.Span(str(kpis['properties_flagged']), 
-                                             style={'color': '#dc3545', 'fontWeight': '700'}),
-                                    html.Span(" / ", 
-                                             style={'color': '#6c757d', 'fontWeight': '400'}),
-                                    html.Span(str(kpis['total_properties']), 
-                                             style={'color': '#6c757d', 'fontWeight': '700'})
-                                ], className="mb-1",
-                                style={'fontSize': '2.5rem'}),
-                                html.P("Locations Flagged", 
+                                html.H3(str(kpis['reviews_processed_today']), 
+                                       className="mb-1",
+                                       style={'fontWeight': '700', 'fontSize': '2.5rem', 'color': '#212529'}),
+                                html.P("Reviews Processed", 
                                       className="mb-2 text-muted",
                                       style={'fontSize': '0.95rem', 'fontWeight': '500'}),
-                                get_trend_indicator(kpis['trends'].get('flagged_properties_change', 0))
+                                html.Span("Today", style={'color': '#6c757d', 'fontSize': '0.875rem'})
                             ])
                         ], style={'padding': '1.5rem'})
                     ], style={'border': 'none', 'borderRadius': '12px', 'height': '100%'})
@@ -790,27 +784,6 @@ def load_executive_kpis(screen):
                     ], style={'border': 'none', 'borderRadius': '12px', 'height': '100%'})
                 ], md=6, lg=3, className="mb-4"),
                 
-                # Reviews Processed
-                dbc.Col([
-                    dbc.Card([
-                        dbc.CardBody([
-                            html.Div([
-                                html.Div([
-                                    html.I(className="bi bi-file-earmark-text", 
-                                          style={'fontSize': '1.5rem', 'color': '#17a2b8', 'marginBottom': '0.5rem'}),
-                                ]),
-                                html.H3(str(kpis['reviews_processed_today']), 
-                                       className="mb-1",
-                                       style={'fontWeight': '700', 'fontSize': '2.5rem', 'color': '#212529'}),
-                                html.P("Reviews Processed", 
-                                      className="mb-2 text-muted",
-                                      style={'fontSize': '0.95rem', 'fontWeight': '500'}),
-                                html.Span("Today", style={'color': '#6c757d', 'fontSize': '0.875rem'})
-                            ])
-                        ], style={'padding': '1.5rem'})
-                    ], style={'border': 'none', 'borderRadius': '12px', 'height': '100%'})
-                ], md=6, lg=3, className="mb-4"),
-                
                 # Aspects Monitored
                 dbc.Col([
                     dbc.Card([
@@ -832,6 +805,33 @@ def load_executive_kpis(screen):
                                 html.P("Aspects Monitored", 
                                       className="mb-0 text-muted",
                                       style={'fontSize': '0.95rem', 'fontWeight': '500'}),
+                            ])
+                        ], style={'padding': '1.5rem'})
+                    ], style={'border': 'none', 'borderRadius': '12px', 'height': '100%'})
+                ], md=6, lg=3, className="mb-4"),
+                
+                # Locations Flagged (Combined)
+                dbc.Col([
+                    dbc.Card([
+                        dbc.CardBody([
+                            html.Div([
+                                html.Div([
+                                    html.I(className="bi bi-exclamation-triangle", 
+                                          style={'fontSize': '1.5rem', 'color': '#dc3545', 'marginBottom': '0.5rem'}),
+                                ]),
+                                html.H3([
+                                    html.Span(str(kpis['properties_flagged']), 
+                                             style={'color': '#dc3545', 'fontWeight': '700'}),
+                                    html.Span(" / ", 
+                                             style={'color': '#6c757d', 'fontWeight': '400'}),
+                                    html.Span(str(kpis['total_properties']), 
+                                             style={'color': '#6c757d', 'fontWeight': '700'})
+                                ], className="mb-1",
+                                style={'fontSize': '2.5rem'}),
+                                html.P("Locations Flagged", 
+                                      className="mb-2 text-muted",
+                                      style={'fontSize': '0.95rem', 'fontWeight': '500'}),
+                                get_trend_indicator(kpis['trends'].get('flagged_properties_change', 0))
                             ])
                         ], style={'padding': '1.5rem'})
                     ], style={'border': 'none', 'borderRadius': '12px', 'height': '100%'})
