@@ -1,0 +1,52 @@
+# Databricks Apps configuration for voc-hotel-app
+# See https://docs.databricks.com/aws/en/dev-tools/databricks-apps/app-runtime
+#
+# DEPLOYMENT INSTRUCTIONS:
+# 1. Update the values below to match your Databricks workspace
+# 2. Store sensitive values (CLIENT_SECRET, GENIE_SPACE_ID) in Databricks Secrets
+# 3. Reference secrets using ${SECRET_NAME} syntax
+# 4. Deploy with: databricks apps deploy
+#
+# SECURITY NOTES:
+# - Never commit actual secret values to version control
+# - Use Databricks Secrets for DATABRICKS_CLIENT_SECRET and GENIE_SPACE_ID
+# - Ensure service principal has required permissions:
+#   * CAN USE on SQL Warehouse
+#   * SELECT on Unity Catalog tables
+#   * Access to Lakebase OLTP instance
+#   * Access to Genie Space
+
+command:
+  - python
+  - dash_app.py
+
+env:
+  # Databricks workspace connection
+  - name: DATABRICKS_HOST
+    value: https://e2-demo-field-eng.cloud.databricks.com
+  
+  # OAuth credentials for service principal
+  - name: DATABRICKS_CLIENT_ID
+    value: bac4a469-ae3d-4165-b6b8-cb40af704d61
+  
+  - name: DATABRICKS_CLIENT_SECRET
+    value: ${DATABRICKS_CLIENT_SECRET}
+  
+  # SQL Warehouse for Unity Catalog queries
+  - name: DATABRICKS_SQL_WAREHOUSE_PATH
+    value: /sql/1.0/warehouses/a9fea331792bc9d6
+  
+  # Genie Space ID for AI queries
+  - name: GENIE_SPACE_ID
+    value: ${GENIE_SPACE_ID}
+  
+  # Lakebase OLTP database configuration
+  - name: LAKEBASE_INSTANCE_NAME
+    value: fe_shared_demo
+  
+  - name: LAKEBASE_DB_NAME
+    value: vibe_coding
+  
+  - name: LAKEBASE_SCHEMA
+    value: voc
+

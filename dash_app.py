@@ -295,19 +295,25 @@ def create_hq_properties():
             dbc.Card([
                 dbc.CardBody([
                     html.H4("📊 Issue Analytics", className="mb-4", style={'fontWeight': '600'}),
-                    dbc.Row([
-                        dbc.Col([
-                            html.Div(id='trend-chart-container')
-                        ], md=6),
-                        dbc.Col([
-                            html.Div(id='aspect-breakdown-chart')
-                        ], md=6),
-                    ]),
-                    dbc.Row([
-                        dbc.Col([
-                            html.Div(id='regional-comparison-chart')
-                        ], md=12)
-                    ], className="mt-4")
+                    dcc.Loading(
+                        id="loading-analytics",
+                        type="default",
+                        children=[
+                            dbc.Row([
+                                dbc.Col([
+                                    html.Div(id='trend-chart-container')
+                                ], md=6),
+                                dbc.Col([
+                                    html.Div(id='aspect-breakdown-chart')
+                                ], md=6),
+                            ]),
+                            dbc.Row([
+                                dbc.Col([
+                                    html.Div(id='regional-comparison-chart')
+                                ], md=12)
+                            ], className="mt-4")
+                        ]
+                    )
                 ], style={'padding': '1.5rem'})
             ], style={'border': 'none', 'borderRadius': '12px'}, className="mb-5")
         ], style={'maxWidth': '1400px'}),
@@ -355,38 +361,78 @@ def create_hq_dashboard():
             ], className="my-4"),
         ], style={'maxWidth': '1400px'}),
         
-        # Show property details (references global placeholder)
+        # Property details (stays visible)
         dbc.Container([
             html.Div(id='hq-selected-property-details-container'),
         ], style={'maxWidth': '1400px'}, className="mb-4"),
         
-        # Embedded Databricks AI/BI Dashboard (filtered by property)
+        # TABS SECTION
         dbc.Container([
-            html.H4("Property Analytics Dashboard", className="mb-3", style={'fontWeight': '600'}),
-            html.Div(id='hq-filtered-dashboard-iframe'),
+            dbc.Tabs([
+                # Tab 1: Property Analytics Dashboard
+                dbc.Tab(
+                    html.Div([
+                        html.Div(id='hq-filtered-dashboard-iframe', className="mt-3"),
+                    ], style={'padding': '1.5rem 0'}),
+                    label="Property Analytics Dashboard",
+                    tab_id="analytics-tab",
+                ),
+                
+                # Tab 2: Aspect Analysis + Review Deep Dive
+                dbc.Tab(
+                    html.Div([
+                        # Aspect Analysis Table
+                        html.Div(id='hq-aspect-analysis-table', className="mb-4"),
+                        
+                        # Reviews Deep Dive Section
+                        dbc.Card([
+                            dbc.CardBody([
+                                html.H4("📊 Reviews Deep Dive", className="mb-3", style={'fontWeight': '600'}),
+                                html.P("Select an aspect to analyze detailed review insights", 
+                                      className="text-muted mb-3",
+                                      style={'fontSize': '0.95rem'}),
+                                dcc.Dropdown(
+                                    id='hq-aspect-selector',
+                                    placeholder="Select an aspect to analyze...",
+                                    className="mb-3",
+                                    style={'fontSize': '1rem'}
+                                ),
+                            ], style={'padding': '1.5rem'})
+                        ], className="mb-4", style={'border': 'none', 'borderRadius': '12px'}),
+                        html.Div(id='hq-reviews-deep-dive-content'),
+                    ], style={'padding': '1.5rem 0'}),
+                    label="Aspect Analysis + Review Deep Dive",
+                    tab_id="aspect-tab",
+                ),
+                
+                # Tab 3: Generate Email
+                dbc.Tab(
+                    html.Div([
+                        dbc.Card([
+                            dbc.CardBody([
+                                html.H4("Generate Email", className="mb-3", style={'fontWeight': '600'}),
+                                html.P("Generate a detailed email for the property manager", 
+                                      className="text-muted mb-3",
+                                      style={'fontSize': '0.95rem'}),
+                                dbc.Button(
+                                    "Generate Email",
+                                    id='hq-generate-email-btn',
+                                    color="primary",
+                                    className="mb-3",
+                                    style={'borderRadius': '8px', 'padding': '0.75rem 1.5rem'}
+                                ),
+                                html.Div(id='hq-email-draft'),
+                            ], style={'padding': '1.5rem'})
+                        ], style={'border': 'none', 'borderRadius': '12px'}),
+                    ], style={'padding': '1.5rem 0'}),
+                    label="Generate Email",
+                    tab_id="email-tab",
+                ),
+            ], id="hq-dashboard-tabs", active_tab="analytics-tab"),
         ], style={'maxWidth': '1400px'}, className="my-4"),
         
-        # Reviews Deep Dive Section
+        # Ask Genie - Floating section (always visible)
         dbc.Container([
-            dbc.Card([
-                dbc.CardBody([
-                    html.H4("📊 Reviews Deep Dive", className="mb-3", style={'fontWeight': '600'}),
-                    html.P("Select an aspect to analyze detailed review insights", 
-                          className="text-muted mb-3",
-                          style={'fontSize': '0.95rem'}),
-                    dcc.Dropdown(
-                        id='hq-aspect-selector',
-                        placeholder="Select an aspect to analyze...",
-                        className="mb-3",
-                        style={'fontSize': '1rem'}
-                    ),
-                ], style={'padding': '1.5rem'})
-            ], className="mb-4", style={'border': 'none', 'borderRadius': '12px'}),
-            html.Div(id='hq-reviews-deep-dive-content'),
-        ], style={'maxWidth': '1400px'}, className="my-4"),
-        
-        dbc.Container([
-            # Genie Query Section
             dbc.Card([
                 dbc.CardBody([
                     html.H4("Ask Genie", className="mb-3", style={'fontWeight': '600'}),
@@ -400,25 +446,22 @@ def create_hq_dashboard():
                         dbc.Button(
                             "Ask",
                             id='btn-ask-genie-hq',
-                            color="danger",
-                            style={'borderRadius': '0 8px 8px 0', 'padding': '0.75rem 1.5rem', 'fontWeight': '500'}
+                            color="primary",
+                            style={'borderRadius': '0 8px 8px 0', 'padding': '0.75rem 1.5rem'}
                         ),
-                    ]),
+                    ], className="mb-3"),
+                    html.Div(id='hq-genie-results-container'),
                 ], style={'padding': '1.5rem'})
-            ], className="my-4", style={'border': 'none', 'borderRadius': '12px'}),
-            html.Div(id='hq-genie-results-container', className="my-4"),
-        ], style={'maxWidth': '1400px'}),
+            ], style={'border': 'none', 'borderRadius': '12px', 'backgroundColor': '#f8f9fa'})
+        ], style={'maxWidth': '1400px'}, className="my-4"),
         
+        # Back to Properties button
         dbc.Container([
             dbc.Row([
                 dbc.Col([
                     dbc.Button("Back to Properties", id='btn-back-to-properties', color="secondary", 
                               size="lg", style={'fontWeight': '500'})
                 ], width="auto"),
-                dbc.Col([
-                    dbc.Button("Proceed to Send Email", id='btn-proceed-to-email', color="danger", 
-                              size="lg", style={'fontWeight': '500'})
-                ], width="auto", className="ms-auto"),
             ], className="mb-4"),
         ], style={'maxWidth': '1400px'}),
     ], style={'backgroundColor': '#f8f9fa', 'minHeight': '100vh', 'paddingBottom': '3rem'})
@@ -624,14 +667,12 @@ def navigate_screens(current_screen, current_persona):
     [Input('btn-select-hq', 'n_clicks'),
      Input('btn-select-pm', 'n_clicks'),
      Input('btn-back-to-properties', 'n_clicks'),
-     Input('btn-proceed-to-email', 'n_clicks'),
-     Input('btn-back-to-dashboard', 'n_clicks'),
      Input('btn-back-to-roles', 'n_clicks'),
      Input('btn-switch-hq', 'n_clicks'),
      Input('btn-switch-pm', 'n_clicks')],
     prevent_initial_call='initial_duplicate'  # Only prevent on initial duplicate, not on component creation
 )
-def handle_button_clicks(hq, pm, back_prop, proceed, back_dash, back_roles, switch_hq, switch_pm):
+def handle_button_clicks(hq, pm, back_prop, back_roles, switch_hq, switch_pm):
     ctx = callback_context
     print(f"🎯 handle_button_clicks triggered!")
     print(f"   Triggered by: {ctx.triggered}")
@@ -659,12 +700,6 @@ def handle_button_clicks(hq, pm, back_prop, proceed, back_dash, back_roles, swit
     elif button_id == 'btn-back-to-properties':
         print(f"   ➡️  Navigating to: hq-properties")
         return 'hq-properties'
-    elif button_id == 'btn-proceed-to-email':
-        print(f"   ➡️  Navigating to: hq-email")
-        return 'hq-email'
-    elif button_id == 'btn-back-to-dashboard':
-        print(f"   ➡️  Navigating to: hq-dashboard")
-        return 'hq-dashboard'
     elif button_id == 'btn-back-to-roles':
         print(f"   ➡️  Navigating to: role-selection")
         return 'role-selection'
@@ -1495,15 +1530,16 @@ def load_expanded_properties_list(is_open, screen):
 # Note: Healthy property cards now use same view-property-btn pattern as flagged properties
 # No separate table click handler needed - accordion cards have View buttons
 
-# Load analytics charts
+# Load analytics charts (depends on KPIs loading first)
 @app.callback(
     [Output('trend-chart-container', 'children'),
      Output('aspect-breakdown-chart', 'children'),
      Output('regional-comparison-chart', 'children')],
-    Input('current-screen', 'data'),
+    Input('hq-executive-kpis', 'children'),
+    State('current-screen', 'data'),
     prevent_initial_call=False
 )
-def load_analytics_charts(screen):
+def load_analytics_charts(kpis_loaded, screen):
     if screen != 'hq-properties':
         return html.Div(), html.Div(), html.Div()
     
@@ -1709,17 +1745,6 @@ def load_property_details(property_id, screen):
             return dbc.Alert("Property not found.", color="warning")
         print(f"   ✅ Property details loaded!")
         
-        # Create aspects table
-        aspects_data = []
-        for aspect in details['aspects']:
-            status_color = 'critical' if aspect['status'] == 'critical' else (
-                'warning' if aspect['status'] == 'warning' else 'good')
-            aspects_data.append({
-                'Aspect': aspect['name'],
-                'Negative Reviews': f"{aspect['percentage']}%",
-                'Status': aspect['status'].upper()
-            })
-        
         return dbc.Card([
             dbc.CardBody([
                 # Property Header with location badge
@@ -1746,9 +1771,44 @@ def load_property_details(property_id, screen):
                     ], md=4, className="text-end d-flex align-items-center justify-content-end"),
                 ], className="mb-4"),
                 
-                html.Hr(),
-                
-                html.H4("Aspect Analysis", className="mb-3 mt-4", style={'fontWeight': '600'}),
+            ], style={'padding': '2rem'})
+        ], style={'border': 'none', 'borderRadius': '12px', 'boxShadow': '0 4px 12px rgba(0,0,0,0.1)'})
+    except Exception as e:
+        return dbc.Alert(f"Error loading property details: {str(e)}", color="danger")
+
+# Load aspect analysis table in Tab 2
+@app.callback(
+    Output('hq-aspect-analysis-table', 'children'),
+    [Input('selected-property-id', 'data'),
+     Input('current-screen', 'data')]
+)
+def load_aspect_analysis_table(property_id, screen):
+    if screen != 'hq-dashboard' or not property_id:
+        return html.Div()
+    
+    try:
+        details = property_service.get_property_details(property_id)
+        if not details or 'aspects' not in details:
+            return html.Div()
+        
+        # Create aspects table
+        aspects_data = []
+        for aspect in details['aspects']:
+            aspects_data.append({
+                'Aspect': aspect['name'],
+                'Negative Reviews': f"{aspect['percentage']}%",
+                'Status': aspect['status'].upper()
+            })
+        
+        if not aspects_data:
+            return html.Div()
+        
+        return dbc.Card([
+            dbc.CardBody([
+                html.H4("📋 Aspect Analysis", className="mb-3", style={'fontWeight': '600'}),
+                html.P("Overview of all aspects and their performance", 
+                      className="text-muted mb-3",
+                      style={'fontSize': '0.95rem'}),
                 dash_table.DataTable(
                     data=aspects_data,
                     columns=[{'name': i, 'id': i} for i in aspects_data[0].keys()],
@@ -1767,10 +1827,11 @@ def load_property_details(property_id, screen):
                          'backgroundColor': '#fff9c4', 'color': custom_style['warning'], 'fontWeight': '500'},
                     ],
                 )
-            ], style={'padding': '2rem'})
-        ], style={'border': 'none', 'borderRadius': '12px', 'boxShadow': '0 4px 12px rgba(0,0,0,0.1)'})
+            ], style={'padding': '1.5rem'})
+        ], style={'border': 'none', 'borderRadius': '12px'})
     except Exception as e:
-        return dbc.Alert(f"Error loading property details: {str(e)}", color="danger")
+        print(f"Error loading aspect analysis table: {str(e)}")
+        return html.Div()
 
 # Load filtered dashboard iframe based on selected property
 @app.callback(
@@ -2576,7 +2637,66 @@ def generate_email(screen, property_id):
     except Exception as e:
         return dbc.Alert(f"Error generating email: {str(e)}", color="danger"), None
 
-# Send email
+# Generate email for HQ Dashboard Tab 3
+@app.callback(
+    Output('hq-email-draft', 'children'),
+    Input('hq-generate-email-btn', 'n_clicks'),
+    State('selected-property-id', 'data'),
+    prevent_initial_call=True
+)
+def generate_hq_email_tab(n_clicks, property_id):
+    if not n_clicks or not property_id:
+        return html.Div()
+    
+    try:
+        property_data = property_service.get_property_details(property_id)
+        if not property_data:
+            return dbc.Alert("Property not found.", color="warning")
+        
+        email_result = email_service.generate_property_email(property_data)
+        
+        if 'error' in email_result:
+            return dbc.Alert(f"Error: {email_result['error']}", color="danger")
+        
+        return dbc.Card([
+            dbc.CardBody([
+                html.H5(f"To: {email_result['property_name']} Property Manager", className="mb-3", style={'fontWeight': '600'}),
+                html.Hr(),
+                html.Pre(email_result['email_content'], 
+                        style={'whiteSpace': 'pre-wrap', 
+                               'fontFamily': 'inherit',
+                               'backgroundColor': '#f8f9fa',
+                               'padding': '1rem',
+                               'borderRadius': '8px',
+                               'border': '1px solid #dee2e6'}),
+                html.Hr(className="my-4"),
+                dbc.Button("Copy to Clipboard", 
+                          id='btn-copy-email',
+                          color="secondary",
+                          className="me-2",
+                          style={'borderRadius': '8px'}),
+                dbc.Button("Send Email", 
+                          id='btn-send-hq-email',
+                          color="primary",
+                          style={'borderRadius': '8px'}),
+            ])
+        ], style={'marginTop': '1rem'})
+    except Exception as e:
+        return dbc.Alert(f"Error generating email: {str(e)}", color="danger")
+
+# Send email from HQ Dashboard Tab 3
+@app.callback(
+    Output('hq-email-draft', 'children', allow_duplicate=True),
+    Input('btn-send-hq-email', 'n_clicks'),
+    prevent_initial_call=True
+)
+def send_hq_email_tab(n_clicks):
+    if not n_clicks:
+        return dash.no_update
+    
+    return dbc.Alert("✅ Email sent successfully!", color="success", className="mt-3")
+
+# Send email (legacy from old hq-email screen)
 @app.callback(
     Output('email-draft', 'children', allow_duplicate=True),
     Input('btn-send-email', 'n_clicks'),
