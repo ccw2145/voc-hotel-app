@@ -21,32 +21,18 @@ command:
   - dash_app.py
 
 env:
-  # Databricks workspace connection
-  - name: DATABRICKS_HOST
-    value: https://e2-demo-field-eng.cloud.databricks.com
-  
-  # OAuth credentials for service principal
-  - name: DATABRICKS_CLIENT_ID
-    value: bac4a469-ae3d-4165-b6b8-cb40af704d61
-  
-  - name: DATABRICKS_CLIENT_SECRET
-    value: ${DATABRICKS_CLIENT_SECRET}
-  
   # SQL Warehouse for Unity Catalog queries
   - name: DATABRICKS_SQL_WAREHOUSE_PATH
     value: /sql/1.0/warehouses/a9fea331792bc9d6
-  
+
   # Genie Space ID for AI queries
   - name: GENIE_SPACE_ID
-    value: ${GENIE_SPACE_ID}
+    value: 01f0a933aa7a14dc8b377db69cd237ee
   
   # Lakebase OLTP database configuration
   - name: LAKEBASE_INSTANCE_NAME
-    value: fe_shared_demo
+    value: voc-app-demo
   
   - name: LAKEBASE_DB_NAME
-    value: vibe_coding
-  
-  - name: LAKEBASE_SCHEMA
-    value: voc
+    value: lakehouse_inn_db
 

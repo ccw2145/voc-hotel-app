@@ -12,13 +12,21 @@ class PropertyService:
     """Service for managing property data and health metrics"""
     
     def __init__(self):
-        self.table_name = "lakehouse_inn_catalog.voc.open_issues_diagnosis"
+        self.issues_table = "lakehouse_inn_catalog.voc.open_issues_diagnosis"
         self.reviews_table = "lakehouse_inn_catalog.voc.review_aspect_details"
         self.hotels_table = "lakehouse_inn_catalog.voc.hotel_locations"
         self._cache = {}
         self._cache_timestamp = None
         self._hotels_cache = None
         self._hotels_cache_timestamp = None
+        # Auth context for service principal authentication
+        self._role = 'hq'
+        self._property = None
+    
+    def set_auth_context(self, role: str = 'hq', property: str = None):
+        """Set authentication context for service principal selection"""
+        self._role = role
+        self._property = property
     
     def _get_placeholder_data(self) -> List[Dict]:
         """Return placeholder data when database is unavailable"""
@@ -74,7 +82,43 @@ class PropertyService:
                 'response_data': {"aspect": "Amenities", "issue_summary": "Generally satisfied, 3 reviews mention amenities positively.", "potential_root_cause": "N/A - performing well.", "impact": "1.1% mention amenities, mostly positive.", "recommended_action": "Continue current amenity offerings."}
             },
         ]
-    
+    def _get_reviews_data(self) -> List[Dict]:
+        """Fetch reviews data from Databricks table with caching"""
+        if (self._reviews_cache_timestamp and 
+            (datetime.now() - self._reviews_cache_timestamp).seconds < 600):
+            return self._reviews_cache or []
+        
+        try:
+            query = f"""
+                SELECT 
+                    review_uid, 
+                    review_date,
+                    location
+                FROM {self.reviews_table}
+                GROUP BY review_uid,location, review_date
+            """
+            reviews = database_service.query(query, role=self._role, property=self._property)
+            reviews_list = []
+            for review in reviews:
+                hotels_list.append({
+                    'location': hotel.get('location'),
+                    'latitude': float(hotel.get('latitude', 0)),
+                    'longitude': float(hotel.get('longitude', 0))
+                })
+            
+            # Update cache
+            self._hotels_cache = hotels_list
+            self._hotels_cache_timestamp = datetime.now()
+            
+            print(f"✅ Fetched {len(hotels_list)} hotel locations from {self.hotels_table}")
+            return hotels_list
+            self._reviews_cache = reviews
+            self._cache_timestamp = datetime.now()
+            return reviews
+        except Exception as e:
+            print(f"⚠️  Error fetching reviews data: {str(e)}")
+            return []
+
     def _get_hotel_locations(self) -> List[Dict]:
         """Fetch all hotel locations from Databricks table with caching"""
         # Cache for 10 minutes (hotel locations don't change often)
@@ -91,7 +135,7 @@ class PropertyService:
                 FROM {self.hotels_table}
             """
             
-            hotels = database_service.query(query)
+            hotels = database_service.query(query, role=self._role, property=self._property)
             
             if hotels is None:
                 print("📊 Using placeholder hotel locations")
@@ -129,15 +173,30 @@ class PropertyService:
             {'location': 'Seattle, WA', 'latitude': 47.6062, 'longitude': -122.3321},
         ]
     
-    def _get_issues_data(self) -> List[Dict]:
-        """Fetch issues data from Databricks table with caching"""
-        # Cache for 5 minutes
-        if (self._cache_timestamp and 
-            (datetime.now() - self._cache_timestamp).seconds < 300):
+    def _get_issues_data(self, days: Optional[int] = None) -> List[Dict]:
+        """Fetch issues data from Databricks table with caching
+        
+        Args:
+            days: Number of days to look back from current date. If None, get all open issues.
+        """
+        # Only use cache if no days filter (all data)
+        if days is None and self._cache_timestamp and (datetime.now() - self._cache_timestamp).seconds < 300:
             return self._cache.get('issues', [])
         
         try:
+            # Build date filter based on days parameter (using latest opened_at as reference)
+            if days is not None:
+                date_filter = f"AND opened_at >= latest_opened_at - INTERVAL {days} DAYS"
+            else:
+                date_filter = ""
+            
             query = f"""
+                WITH latest_date_cte AS (
+                    SELECT 
+                        MAX(opened_at) AS latest_opened_at
+                    FROM {self.issues_table}
+                    WHERE status = 'Open'
+                )
                 SELECT 
                     location,
                     aspect,
@@ -157,11 +216,13 @@ class PropertyService:
                             recommended_action: STRING
                         >'
                     ) as response_data
-                FROM {self.table_name}
+                FROM {self.issues_table}
+                CROSS JOIN latest_date_cte
                 WHERE status = 'Open'
+                {date_filter}
             """
             
-            issues = database_service.query(query)
+            issues = database_service.query(query, role=self._role, property=self._property)
             
             # Use placeholder data if query returns None (connection failed)
             if issues is None:
@@ -197,27 +258,13 @@ class PropertyService:
             'state': parts[1].strip() if len(parts) > 1 else ''
         }
     
-    def _calculate_status(self, nms_open: float) -> str:
-        """Calculate status based on nms_open (negative share as decimal)"""
-        # nms_open is a decimal (e.g., 0.409 = 40.9%)
-        # Convert to percentage for threshold comparison
-        percentage = nms_open * 100
-        
-        if percentage >= 40.0:
-            return 'critical'
-        elif percentage >= 20.0:
-            return 'warning'
-        elif percentage >= 10.0:
-            return 'good'
-        else:
-            return 'excellent'
     
     def get_all_properties(self) -> List[Dict]:
         """Get list of all properties from hotel_locations table, merged with issues data"""
         # Get all hotel locations (source of truth for all 120 properties)
         hotels = self._get_hotel_locations()
         issues = self._get_issues_data()
-        
+        # has_reviews = self._get_reviews_data()
         # Group issues by location
         issues_map = {}
         for issue in issues:
@@ -243,22 +290,24 @@ class PropertyService:
                 for issue in property_issues:
                     aspect = issue.get('aspect', 'Unknown')
                     nms_open = float(issue.get('nms_open', 0))
+                    # Read severity directly from issues table
+                    severity = issue.get('severity', 'Unknown').lower()
                     
                     if aspect not in aspects_map or nms_open > aspects_map[aspect]['percentage']:
                         aspects_map[aspect] = {
                             'name': aspect,
                             'percentage': nms_open,
-                            'status': self._calculate_status(nms_open)
+                            'status': severity
                         }
                 
                 aspects = list(aspects_map.values())
                 
-                # Calculate aggregate metrics
-                total_volume = sum(a['percentage'] for a in aspects)
-                avg_volume = total_volume / len(aspects) if aspects else 0
+                # # Calculate aggregate metrics
+                # total_volume = sum(a['percentage'] for a in aspects)
+                # avg_volume = total_volume / len(aspects) if aspects else 0
                 
                 # Estimate rating based on volume (inverse relationship)
-                estimated_rating = max(1.0, min(5.0, 5.0 - (avg_volume / 2)))
+                # estimated_rating = max(1.0, min(5.0, 5.0 - (avg_volume / 2)))
                 
                 # Get top issue theme
                 top_issue = max(property_issues, key=lambda x: float(x.get('nms_open', 0)))
@@ -266,10 +315,10 @@ class PropertyService:
             else:
                 # Property has no issues - mark as healthy
                 aspects = []
-                avg_volume = 0
-                estimated_rating = 5.0
+                # avg_volume = 0
+                # estimated_rating = 5.0
                 top_theme = 'no_issues'
-            
+          
             properties.append({
                 'property_id': property_id,
                 'name': location,
@@ -279,7 +328,7 @@ class PropertyService:
                 'longitude': hotel.get('longitude', 0),
                 'aspects': aspects,
                 'reviews_count': len(property_issues),
-                'avg_rating': round(estimated_rating, 1),
+                # 'avg_rating': round(estimated_rating, 1),
                 'top_theme': top_theme,
                 'has_issues': len(property_issues) > 0
             })
@@ -308,22 +357,20 @@ class PropertyService:
         for issue in property_issues:
             aspect = issue.get('aspect', 'Unknown')
             nms_open = float(issue.get('nms_open', 0))
+            # Read severity directly from issues table
+            severity = issue.get('severity', 'Unknown').lower()
             
             if aspect not in aspects_map or nms_open > aspects_map[aspect]['percentage']:
                 aspects_map[aspect] = {
                     'name': aspect,
-                    'percentage': nms_open * 100,  # Convert to percentage
-                    'status': self._calculate_status(nms_open)
+                    'percentage': nms_open,  # nms_open is already a percentage (5.1 = 5.1%)
+                    'status': severity
                 }
         
         aspects = list(aspects_map.values())
         
-        # Calculate aggregate metrics
-        total_percentage = sum(a['percentage'] for a in aspects)
-        avg_percentage = total_percentage / len(aspects) if aspects else 0
-        
-        # Estimate rating based on negative percentage (inverse relationship)
-        estimated_rating = max(1.0, min(5.0, 5.0 - (avg_percentage / 20)))
+        # Get actual review count and rating from reviews table
+        reviews_count, avg_rating = self._get_property_review_stats(location)
         
         # Get top issue theme
         top_issue = max(property_issues, key=lambda x: float(x.get('nms_open', 0))) if property_issues else {}
@@ -335,11 +382,48 @@ class PropertyService:
             'city': parsed['city'],
             'state': parsed['state'],
             'aspects': aspects,
-            'reviews_count': len(property_issues),
-            'avg_rating': round(estimated_rating, 1),
+            'reviews_count': reviews_count,
+            'avg_rating': avg_rating,
             'top_theme': top_theme,
             'issues': property_issues
         }
+    
+    def _get_property_review_stats(self, location: str) -> tuple:
+        """Get actual review count and average rating for a property from reviews table"""
+        try:
+            query = f"""
+            SELECT 
+                COUNT(DISTINCT review_uid) AS review_count,
+                AVG(avg_rating) AS avg_rating
+                FROM (
+                SELECT 
+                    review_uid, 
+                    star_rating, 
+                    AVG(star_rating) AS avg_rating
+                FROM {self.reviews_table}
+                WHERE location = '{location}'
+                GROUP BY review_uid, star_rating
+                ) t;
+            """
+            #             SELECT 
+            #     COUNT(DISTINCT review_uid) AS review_count,
+            #     AVG(star_rating) AS avg_rating
+            # FROM {self.reviews_table}
+            # WHERE location = '{location}'
+
+            rows = database_service.query(query, role=self._role, property=self._property)
+            
+            if rows and len(rows) > 0:
+                row = rows[0]
+                review_count = int(row.get('review_count', 0))
+                avg_rating = float(row.get('avg_rating', 0.0)) if row.get('avg_rating') else 0.0
+                return review_count, round(avg_rating, 1)
+            else:
+                return 0, 0.0
+        except Exception as e:
+            print(f"⚠️  Error fetching review stats for {location}: {str(e)}")
+            # Fallback to placeholder
+            return 0, 0.0
     
     def get_flagged_properties(self) -> List[Dict]:
         """Get properties with critical or warning issues from database"""
@@ -347,16 +431,17 @@ class PropertyService:
         flagged = []
         for issue in issues:
             nms_open = float(issue.get('nms_open', 0))
-            status = self._calculate_status(nms_open)
-            if status in ['critical', 'warning']:
+            # Read severity directly from issues table
+            severity = issue.get('severity', 'Unknown').lower()
+            if severity in ['critical', 'warning']:
                 location = issue.get('location', 'Unknown')
                 prop_id = location.lower().replace(' ', '-').replace(',', '')
                 flagged.append({
                     'property': location,
                     'property_id': prop_id,
                     'aspect': issue.get('aspect', 'Unknown'),
-                    'negative_percentage': nms_open * 100,
-                    'status': status
+                    'negative_percentage': nms_open,  # nms_open is already a percentage
+                    'status': severity
                 })
         return flagged
     
@@ -368,9 +453,10 @@ class PropertyService:
         properties = {}
         for issue in issues:
             nms_open = float(issue.get('nms_open', 0))
-            status = self._calculate_status(nms_open)
+            # Read severity directly from issues table
+            severity = issue.get('severity', 'Unknown').lower()
             
-            if status in ['critical', 'warning']:
+            if severity in ['critical', 'warning']:
                 location = issue.get('location', 'Unknown')
                 prop_id = location.lower().replace(' ', '-').replace(',', '')
                 
@@ -385,20 +471,24 @@ class PropertyService:
                 # Add aspect details
                 properties[prop_id]['aspects'].append({
                     'aspect': issue.get('aspect', 'Unknown'),
-                    'negative_percentage': nms_open * 100,
-                    'status': status
+                    'negative_percentage': nms_open,  # nms_open is already a percentage
+                    'status': severity
                 })
                 
                 # Upgrade to critical if any issue is critical
-                if status == 'critical':
+                if severity == 'critical':
                     properties[prop_id]['severity'] = 'critical'
         
         return list(properties.values())
     
-    def get_aspects_coverage(self) -> Dict:
-        """Get aspects coverage: how many aspects have issues vs total possible aspects"""
-        # Get unique aspects from issues data
-        issues = self._get_issues_data()
+    def get_aspects_coverage(self, days: Optional[int] = None) -> Dict:
+        """Get aspects coverage: how many aspects have issues vs total possible aspects
+        
+        Args:
+            days: Number of days to look back. If None, use all issues.
+        """
+        # Get unique aspects from issues data (filtered by timeframe)
+        issues = self._get_issues_data(days=days)
         aspects_with_issues = set()
         for issue in issues:
             aspect = issue.get('aspect')
@@ -408,17 +498,17 @@ class PropertyService:
         # Get total possible aspects from runbook
         from services.recommendations_service import recommendations_service
         runbook_data = recommendations_service._get_runbook_data()
-        
+  
         # Handle both dict and string formats
-        unique_aspects = set()
-        for item in runbook_data:
-            if isinstance(item, dict):
-                aspect = item.get('aspect')
-                if aspect:
-                    unique_aspects.add(aspect)
-            elif isinstance(item, str):
-                # If item is already a string aspect name
-                unique_aspects.add(item)
+        unique_aspects = set(runbook_data.keys())
+        # for item in runbook_data:
+        #     if isinstance(item, dict):
+        #         aspect = item.get('aspect')
+        #         if aspect:
+        #             unique_aspects.add(aspect)
+        #     elif isinstance(item, str):
+        #         # If item is already a string aspect name
+        #         unique_aspects.add(item)
         
         total_possible_aspects = len(unique_aspects)
         
@@ -435,8 +525,9 @@ class PropertyService:
         issues = self._get_issues_data()
         flagged_locations = set()
         for issue in issues:
-            nms_open = float(issue.get('nms_open', 0))
-            if self._calculate_status(nms_open) in ['critical', 'warning']:
+            # Read severity directly from issues table
+            severity = issue.get('severity', 'Unknown').lower()
+            if severity in ['critical', 'warning']:
                 location = issue.get('location', 'Unknown')
                 flagged_locations.add(location)
         
@@ -448,14 +539,13 @@ class PropertyService:
         for prop in all_properties:
             # Skip flagged properties
             location = f"{prop['city']}, {prop['state']}"
-            if location in flagged_locations:
-                continue
+            top_theme = prop['top_theme']
+            reviews_count = prop['reviews_count']
+            # if location in flagged_locations:
+            #     continue
             
             # Check if property has any review data in issues table
-            has_review_data = any(
-                issue.get('location') == location 
-                for issue in issues
-            )
+            has_review_data = reviews_count > 0
             
             if has_review_data:
                 # Has reviews but no critical/warning issues
@@ -466,36 +556,41 @@ class PropertyService:
         
         return grouped
     
-    def get_diagnostics_kpis(self) -> Dict:
-        """Calculate overall diagnostics KPIs using review_aspect_details table"""
+    def get_diagnostics_kpis(self, days: Optional[int] = 21) -> Dict:
+        """Calculate overall diagnostics KPIs using review_aspect_details table
+        
+        Args:
+            days: Number of days to look back from latest review. If None, use all historical data.
+        """
         # Get total properties count from hotel_locations table (source of truth)
         hotels = self._get_hotel_locations()
         total_properties = len(hotels)
         
         # Try to get stats from reviews table first
-        review_stats = self.get_summary_stats_from_reviews()
+        review_stats = self.get_summary_stats_from_reviews(days=days)
         
-        if review_stats['total_reviews_7d'] > 0:
+        if review_stats['total_reviews'] > 0:
             # Use review stats
-            overall_satisfaction = 100 - review_stats['avg_negative_reviews_7d']
+            overall_satisfaction = 100 - review_stats['avg_negative_reviews']
             
-            # Get flagged properties from issues table
-            issues = self._get_issues_data()
+            # Get flagged properties from issues table (filtered by same timeframe)
+            issues = self._get_issues_data(days=days)
             flagged_properties = set()
             for issue in issues:
-                nms_open = float(issue.get('nms_open', 0))
-                if self._calculate_status(nms_open) in ['critical', 'warning']:
+                # Read severity directly from issues table
+                severity = issue.get('severity', 'Unknown').lower()
+                if severity in ['critical', 'warning']:
                     flagged_properties.add(issue.get('location', 'Unknown'))
             
-            # Get aspects coverage
-            aspects_coverage = self.get_aspects_coverage()
+            # Get aspects coverage (also filtered by timeframe)
+            aspects_coverage = self.get_aspects_coverage(days=days)
             
             return {
-                'avg_negative_reviews_7d': review_stats['avg_negative_reviews_7d'],
+                'avg_negative_reviews': review_stats['avg_negative_reviews'],
                 'properties_flagged': len(flagged_properties),
                 'total_properties': total_properties,
                 'overall_satisfaction': round(overall_satisfaction, 1),
-                'reviews_processed_today': review_stats['reviews_processed_today'],
+                'reviews_processed': review_stats['reviews_processed'],
                 'aspects_with_issues': aspects_coverage['aspects_with_issues'],
                 'total_aspects': aspects_coverage['total_aspects'],
                 'trends': {
@@ -505,19 +600,19 @@ class PropertyService:
                 }
             }
         
-        # Fallback to issues table
-        issues = self._get_issues_data()
+        # Fallback to issues table (filtered by same timeframe)
+        issues = self._get_issues_data(days=days)
         
-        # Get aspects coverage
-        aspects_coverage = self.get_aspects_coverage()
+        # Get aspects coverage (filtered by timeframe)
+        aspects_coverage = self.get_aspects_coverage(days=days)
         
         if not issues:
             return {
-                'avg_negative_reviews_7d': 0,
+                'avg_negative_reviews': 0,
                 'properties_flagged': 0,
                 'total_properties': total_properties,
                 'overall_satisfaction': 85.0,
-                'reviews_processed_today': 0,
+                'reviews_processed': 0,
                 'aspects_with_issues': aspects_coverage['aspects_with_issues'],
                 'total_aspects': aspects_coverage['total_aspects'],
                 'trends': {
@@ -532,18 +627,19 @@ class PropertyService:
         
         flagged_properties = set()
         for issue in issues:
-            nms_open = float(issue.get('nms_open', 0))
-            if self._calculate_status(nms_open) in ['critical', 'warning']:
+            # Read severity directly from issues table
+            severity = issue.get('severity', 'Unknown').lower()
+            if severity in ['critical', 'warning']:
                 flagged_properties.add(issue.get('location', 'Unknown'))
         
         overall_satisfaction = max(0, min(100, 100 - avg_negative))
         
         return {
-            'avg_negative_reviews_7d': round(avg_negative, 1),
+            'avg_negative_reviews': round(avg_negative, 1),
             'properties_flagged': len(flagged_properties),
             'total_properties': total_properties,
             'overall_satisfaction': round(overall_satisfaction, 1),
-            'reviews_processed_today': len(issues),
+            'reviews_processed': len(issues),
             'aspects_with_issues': aspects_coverage['aspects_with_issues'],
             'total_aspects': aspects_coverage['total_aspects'],
             'trends': {
@@ -620,7 +716,6 @@ class PropertyService:
         
         # Get open_reason
         open_reason = primary_issue.get('open_reason', 'Not specified')
-        
         return {
             'aspects': sorted(aspects),
             'selected_aspect': aspect,
@@ -661,6 +756,7 @@ class PropertyService:
                 (issue for issue in property_issues if issue.get('aspect') == aspect),
                 property_issues[0]  # Fallback to first issue if aspect not found
             )
+            # print(aspect_issue)
             opened_at = aspect_issue.get('opened_at', None)
             
             # Build date filter - use opened_at if available, otherwise use CURRENT_DATE
@@ -668,11 +764,11 @@ class PropertyService:
                 date_filter = f"review_date >= DATE('{opened_at}') - INTERVAL {days_back} DAYS AND review_date <= DATE('{opened_at}')"
             else:
                 date_filter = f"review_date >= CURRENT_DATE - INTERVAL {days_back} DAYS"
-            
-            # Query reviews from review_aspect_details table
+            # print("$$$$$$$$$$$$$",date_filter)
+            # Query ALL reviews from review_aspect_details table (both positive and negative)
             query = f"""
                 SELECT 
-                    review_id,
+                    review_uid,
                     aspect,
                     sentiment,
                     evidence,
@@ -685,23 +781,29 @@ class PropertyService:
                 WHERE location = '{location}'
                   AND aspect = '{aspect}'
                   AND {date_filter}
-                  AND sentiment IN ('negative', 'very_negative')
-                ORDER BY review_date DESC
+                ORDER BY 
+                    CASE 
+                        WHEN sentiment IN ('negative', 'very_negative') THEN 0
+                        ELSE 1
+                    END,
+                    review_date DESC
                 LIMIT {limit}
             """
-            
-            rows = database_service.query(query)
-            
+
+            rows = database_service.query(query, role=self._role, property=self._property)
+            # print(rows)
             # Check if rows is empty (handle arrays properly)
             if rows is None or len(rows) == 0:
-                return []
+                return {'positive': [], 'negative': []}
             
-            reviews = []
+            positive_reviews = []
+            negative_reviews = []
             for row in rows:
                 # Extract evidence and opinion terms (they are arrays)
                 # Database returns rows as dictionaries
                 evidence = row.get('evidence', [])
                 opinion_terms = row.get('opinion_terms', [])
+                sentiment = row.get('sentiment', '')
                 
                 # Convert to list if needed (handle numpy arrays, tuples, etc.)
                 if evidence is not None and not isinstance(evidence, list):
@@ -724,19 +826,28 @@ class PropertyService:
                 elif opinion_terms is None:
                     opinion_terms = []
                 
-                reviews.append({
-                    'review_id': row.get('review_id'),
+                review_data = {
+                    'review_uid': row.get('review_uid'),
                     'aspect': row.get('aspect'),
-                    'sentiment': row.get('sentiment'),
+                    'sentiment': sentiment,
                     'evidence': evidence,
                     'opinion_terms': opinion_terms,
                     'star_rating': row.get('star_rating'),
                     'review_date': str(row.get('review_date', 'N/A')),
                     'review_text': row.get('review_text'),
                     'channel': row.get('channel')
-                })
+                }
+                
+                # Categorize by sentiment
+                if sentiment in ('negative', 'very_negative'):
+                    negative_reviews.append(review_data)
+                else:
+                    positive_reviews.append(review_data)
             
-            return reviews
+            return {
+                'positive': positive_reviews,
+                'negative': negative_reviews
+            }
             
         except Exception as e:
             print(f"⚠️  Error fetching reviews: {str(e)}")
@@ -745,47 +856,72 @@ class PropertyService:
             # Return placeholder data
             return self._get_placeholder_reviews(aspect)
     
-    def _get_placeholder_reviews(self, aspect: str) -> List[Dict]:
-        """Placeholder reviews for when database is unavailable"""
-        return [
-            {
-                'review_id': 'review_001',
-                'aspect': aspect,
-                'sentiment': 'negative',
-                'evidence': ['The room was not clean', 'found dust on furniture'],
-                'opinion_terms': ['dirty', 'unclean'],
-                'star_rating': 2,
-                'review_date': '2024-10-15',
-                'review_text': 'The room was not clean. I found dust on the furniture and the bathroom needed attention.',
-                'channel': 'Google'
-            },
-            {
-                'review_id': 'review_002',
-                'aspect': aspect,
-                'sentiment': 'very_negative',
-                'evidence': ['terrible experience', 'very disappointed'],
-                'opinion_terms': ['terrible', 'disappointing'],
-                'star_rating': 1,
-                'review_date': '2024-10-14',
-                'review_text': 'Terrible experience. Very disappointed with the quality.',
-                'channel': 'TripAdvisor'
-            },
-            {
-                'review_id': 'review_003',
-                'aspect': aspect,
-                'sentiment': 'negative',
-                'evidence': ['not up to standard', 'below expectations'],
-                'opinion_terms': ['subpar', 'poor'],
-                'star_rating': 2,
-                'review_date': '2024-10-13',
-                'review_text': 'Not up to standard. The quality was below expectations.',
-                'channel': 'Booking.com'
-            }
-        ]
+    def _get_placeholder_reviews(self, aspect: str) -> Dict:
+        """Placeholder reviews for when database is unavailable - returns dict with positive and negative reviews"""
+        return {
+            'negative': [
+                {
+                    'review_uid': 'review_001',
+                    'aspect': aspect,
+                    'sentiment': 'negative',
+                    'evidence': ['The room was not clean', 'found dust on furniture'],
+                    'opinion_terms': ['dirty', 'unclean'],
+                    'star_rating': 2,
+                    'review_date': '2024-10-15',
+                    'review_text': 'The room was not clean. I found dust on the furniture and the bathroom needed attention.',
+                    'channel': 'Google'
+                },
+                {
+                    'review_uid': 'review_002',
+                    'aspect': aspect,
+                    'sentiment': 'very_negative',
+                    'evidence': ['terrible experience', 'very disappointed'],
+                    'opinion_terms': ['terrible', 'disappointing'],
+                    'star_rating': 1,
+                    'review_date': '2024-10-14',
+                    'review_text': 'Terrible experience. Very disappointed with the quality.',
+                    'channel': 'TripAdvisor'
+                }
+            ],
+            'positive': [
+                {
+                    'review_uid': 'review_003',
+                    'aspect': aspect,
+                    'sentiment': 'positive',
+                    'evidence': ['very clean', 'well maintained'],
+                    'opinion_terms': ['clean', 'excellent'],
+                    'star_rating': 5,
+                    'review_date': '2024-10-13',
+                    'review_text': 'Everything was very clean and well maintained. Excellent experience!',
+                    'channel': 'Google'
+                },
+                {
+                    'review_uid': 'review_004',
+                    'aspect': aspect,
+                    'sentiment': 'very_positive',
+                    'evidence': ['outstanding', 'exceeded expectations'],
+                    'opinion_terms': ['outstanding', 'wonderful'],
+                    'star_rating': 5,
+                    'review_date': '2024-10-12',
+                    'review_text': 'Outstanding quality! Exceeded all my expectations. Highly recommend.',
+                    'channel': 'Booking.com'
+                }
+            ]
+        }
     
-    def get_summary_stats_from_reviews(self) -> Dict:
-        """Get summary statistics from review_aspect_details table for HQ dashboard"""
+    def get_summary_stats_from_reviews(self, days: Optional[int] = 21) -> Dict:
+        """Get summary statistics from review_aspect_details table for HQ dashboard
+        
+        Args:
+            days: Number of days to look back from latest review. If None, use all historical data.
+        """
         try:
+            # Build WHERE clause based on days parameter
+            if days is not None:
+                date_filter = f"WHERE review_date >= latest_review_date - INTERVAL {days} DAYS"
+            else:
+                date_filter = ""  # No date filter for all historical
+            
             # Query for overall stats
             query = f"""
             WITH latest_date_cte AS (
@@ -794,7 +930,7 @@ class PropertyService:
                 FROM {self.reviews_table}
                 )
             SELECT 
-                COUNT(review_id) AS total_reviews,
+                COUNT(DISTINCT review_uid) AS total_reviews,
                 COUNT(DISTINCT location) AS total_properties,
                 AVG(star_rating) AS avg_rating,
                 COUNT(CASE WHEN sentiment IN ('negative', 'very_negative') THEN 1 END) AS negative_reviews,
@@ -802,10 +938,10 @@ class PropertyService:
                 MAX(review_date) AS latest_review_date
                 FROM {self.reviews_table}
                 CROSS JOIN latest_date_cte
-                WHERE review_date >= latest_review_date - INTERVAL 7 DAYS
+                {date_filter}
             """
             
-            rows = database_service.query(query)
+            rows = database_service.query(query, role=self._role, property=self._property)
 
             if rows and len(rows) > 0:
                 row = rows[0]
@@ -818,12 +954,12 @@ class PropertyService:
                 negative_percentage = (negative_reviews / total_aspects * 100) if total_aspects > 0 else 0
                 
                 return {
-                    'total_reviews_7d': total_reviews,
+                    'total_reviews': total_reviews,
                     'total_properties': int(row['total_properties']) if row.get('total_properties') else 0,
                     'avg_rating': float(row['avg_rating']) if row.get('avg_rating') else 4.0,
-                    'negative_reviews_7d': negative_reviews,
-                    'avg_negative_reviews_7d': round(negative_percentage, 1),
-                    'reviews_processed_today': total_reviews,  # Approximation
+                    'negative_reviews': negative_reviews,
+                    'avg_negative_reviews': round(negative_percentage, 1),
+                    'reviews_processed': total_reviews,
                     'latest_review_date': str(row['latest_review_date']) if row.get('latest_review_date') else 'N/A'
                 }
             
@@ -834,12 +970,12 @@ class PropertyService:
         
         # Return default stats if query fails
         return {
-            'total_reviews_7d': 0,
+            'total_reviews': 0,
             'total_properties': 0,
             'avg_rating': 0.0,
-            'negative_reviews_7d': 0,
-            'avg_negative_reviews_7d': 0.0,
-            'reviews_processed_today': 0,
+            'negative_reviews': 0,
+            'avg_negative_reviews': 0.0,
+            'reviews_processed': 0,
             'latest_review_date': 'N/A'
         }
     
@@ -847,8 +983,9 @@ class PropertyService:
         """Group flagged properties by geographic region and severity"""
         city_to_region = self._get_city_to_region_mapping()
         
+        # flagged = self.get_flagged_properties_grouped()
         flagged = self.get_flagged_properties_grouped()
-        
+
         if not flagged:
             return {}
         
@@ -876,6 +1013,7 @@ class PropertyService:
                 regions[region] = {'critical': [], 'warning': []}
             
             severity = prop['severity']
+            # severity = prop['status']
             if severity in ['critical', 'warning']:
                 regions[region][severity].append(prop)
         
@@ -894,85 +1032,6 @@ class PropertyService:
                 sorted_regions[region_name] = data
         
         return sorted_regions
-    
-    def get_aspect_breakdown(self) -> List[Dict]:
-        """Get breakdown of issues by aspect with counts and averages"""
-        flagged = self.get_flagged_properties()
-        
-        if not flagged:
-            return []
-        
-        # Aggregate by aspect
-        aspect_data = {}
-        for prop in flagged:
-            aspect = prop['aspect']
-            neg_pct = prop['negative_percentage']
-            
-            if aspect not in aspect_data:
-                aspect_data[aspect] = {
-                    'aspect': aspect,
-                    'count': 0,
-                    'total_negative': 0.0
-                }
-            
-            aspect_data[aspect]['count'] += 1
-            aspect_data[aspect]['total_negative'] += neg_pct
-        
-        # Calculate averages and format
-        breakdown = []
-        for aspect, data in aspect_data.items():
-            breakdown.append({
-                'aspect': aspect.replace('_', ' ').title(),
-                'count': data['count'],
-                'avg_negative': round(data['total_negative'] / data['count'], 1)
-            })
-        
-        # Sort by count (descending)
-        breakdown.sort(key=lambda x: x['count'], reverse=True)
-        
-        return breakdown
-    
-    def get_trend_data(self, days_back: int = 30) -> List[Dict]:
-        """Get issue trend data based on opened_at dates"""
-        issues = self._get_issues_data()
-        
-        if not issues:
-            return []
-        
-        from datetime import datetime, timedelta
-        from collections import defaultdict
-        
-        # Group by date
-        daily_data = defaultdict(lambda: {'count': 0, 'total_severity': 0.0})
-        
-        for issue in issues:
-            opened_at = issue.get('opened_at')
-            if opened_at:
-                # Extract date (handle both string and date objects)
-                if isinstance(opened_at, str):
-                    date_str = opened_at.split('T')[0] if 'T' in opened_at else opened_at.split(' ')[0]
-                else:
-                    date_str = str(opened_at)
-                
-                nms_open = float(issue.get('nms_open', 0))
-                daily_data[date_str]['count'] += 1
-                daily_data[date_str]['total_severity'] += nms_open * 100
-        
-        # Convert to list and calculate averages
-        trend = []
-        for date_str, data in sorted(daily_data.items()):
-            avg_severity = data['total_severity'] / data['count'] if data['count'] > 0 else 0
-            trend.append({
-                'date': date_str,
-                'issues_opened': data['count'],
-                'avg_severity': round(avg_severity, 1)
-            })
-        
-        # Limit to specified days
-        if len(trend) > days_back:
-            trend = trend[-days_back:]
-        
-        return trend
     
     def _get_city_to_region_mapping(self) -> Dict:
         """Get the city to region mapping"""
@@ -1023,79 +1082,6 @@ class PropertyService:
             'Seattle': 'West', 'Tacoma': 'West', 'Portland': 'West', 'Eugene': 'West',
             'San Diego': 'West', 'Los Angeles': 'West', 'San Francisco': 'West',
         }
-    
-    def get_regional_performance_summary(self) -> List[Dict]:
-        """Get performance summary by geographic region - uses same approach as accordion"""
-        city_to_region = self._get_city_to_region_mapping()
-        
-        # Get ALL properties (not just hotels table which has mismatched cities)
-        all_properties = self.get_all_properties()
-        flagged = self.get_flagged_properties()
-        
-        # Create set of flagged property IDs for quick lookup
-        flagged_property_ids = set(prop['property_id'] for prop in flagged)
-        
-        # Group ALL properties by geographic region
-        from collections import defaultdict
-        regions = defaultdict(lambda: {'total': 0, 'flagged_ids': set()})
-        
-        print(f"\n🔍 DEBUG - Grouping properties by region:")
-        unmapped_count = 0
-        
-        for prop in all_properties:
-            city_raw = prop.get('city', 'Unknown')
-            city = city_raw.strip()
-            prop_id = prop.get('property_id')
-            
-            # Try exact match first
-            region = city_to_region.get(city, None)
-            
-            # If no exact match, try case-insensitive match
-            if region is None:
-                for mapped_city, mapped_region in city_to_region.items():
-                    if mapped_city.lower() == city.lower():
-                        region = mapped_region
-                        break
-            
-            if region is None:
-                region = 'Other'
-                if unmapped_count < 5:  # Only print first 5
-                    print(f"  ⚠️  Unmapped city: '{city}'")
-                unmapped_count += 1
-            
-            regions[region]['total'] += 1
-            
-            # If this property is flagged, add to flagged set
-            if prop_id in flagged_property_ids:
-                regions[region]['flagged_ids'].add(prop_id)
-        
-        if unmapped_count > 5:
-            print(f"  ... and {unmapped_count - 5} more unmapped cities")
-        
-        # Calculate satisfaction and format
-        summary = []
-        print(f"\n📊 Regional Performance Summary:")
-        for region, data in regions.items():
-            flagged_count = len(data['flagged_ids'])
-            total = data['total']
-            healthy = total - flagged_count
-            # Satisfaction = (1 - flagged_ratio) * 100
-            satisfaction = round((1 - flagged_count / total) * 100, 1) if total > 0 else 100.0
-            
-            print(f"  {region}: Total={total}, Flagged={flagged_count}, Healthy={healthy}")
-            
-            summary.append({
-                'region': region,
-                'total': total,
-                'flagged': flagged_count,
-                'satisfaction': satisfaction
-            })
-        
-        # Sort by region order, then by flagged count
-        region_order = ['Northeast', 'Mid-Atlantic', 'Southeast', 'Midwest', 'South', 'Southwest', 'West', 'Other']
-        summary.sort(key=lambda x: (region_order.index(x['region']) if x['region'] in region_order else 999, -x['flagged']))
-        
-        return summary
 
 
 # Singleton instance

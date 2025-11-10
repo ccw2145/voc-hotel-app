@@ -4,11 +4,10 @@ Database Service - Handles Databricks SQL connections for reading Delta tables a
 
 import os
 import uuid
-from functools import lru_cache
 from typing import List, Dict, Any, Optional
 import pandas as pd
 from databricks import sql
-from databricks.sdk.core import Config
+from databricks.sdk.core import Config, oauth_service_principal
 from databricks.sdk import WorkspaceClient
 
 # Lakebase OLTP support (optional dependency)
@@ -23,11 +22,29 @@ except ImportError:
 
 
 class RotatingTokenConnection(psycopg.Connection if LAKEBASE_AVAILABLE else object):
-    """psycopg3 Connection that injects a fresh OAuth token as the password."""
+    """psycopg3 Connection that injects a fresh OAuth token as the password with service principal auth."""
     
     @classmethod
     def connect(cls, conninfo: str = "", **kwargs):
-        w = WorkspaceClient()
+        # Extract service principal credentials from kwargs
+        client_id = kwargs.pop("_sp_client_id", None)
+        client_secret = kwargs.pop("_sp_client_secret", None)
+        server_hostname = kwargs.pop("_server_hostname", None)
+        
+        # Create WorkspaceClient with service principal credentials
+        if client_id and client_secret and server_hostname:
+            w = WorkspaceClient(
+                host=f"https://{server_hostname}" if not server_hostname.startswith('https://') else server_hostname,
+                client_id=client_id,
+                client_secret=client_secret
+            )
+            print(f"🔐 Lakebase: Using service principal authentication")
+        else:
+            # Fallback to default credentials (should not happen with proper setup)
+            w = WorkspaceClient()
+            print(f"⚠️  Lakebase: Using default credentials (service principal not configured)")
+        
+        # Generate fresh OAuth token for Lakebase connection
         kwargs["password"] = w.database.generate_database_credential(
             request_id=str(uuid.uuid4()),
             instance_names=[kwargs.pop("_instance_name")]
@@ -41,56 +58,112 @@ class DatabaseService:
     
     def __init__(self):
         # Unity Catalog / SQL Warehouse configuration
-        try:
-            self.cfg = Config()
-            self.http_path = os.getenv('DATABRICKS_SQL_WAREHOUSE_PATH')
+        self.server_hostname = os.getenv('DATABRICKS_SERVER_HOSTNAME')
+        self.http_path = os.getenv('DATABRICKS_HTTP_PATH') or os.getenv('DATABRICKS_SQL_WAREHOUSE_PATH')
+        
+        # Check if we have the minimum required configuration
+        if self.server_hostname and self.http_path:
             self._connection_available = True
-        except Exception as e:
-            print(f"⚠️  Warning: Failed to initialize Databricks config: {e}")
+            print(f"✅ Database service initialized for {self.server_hostname}")
+        else:
+            print("⚠️  Warning: DATABRICKS_SERVER_HOSTNAME or DATABRICKS_HTTP_PATH not set")
             print("📊 Will use placeholder data")
-            self.cfg = None
-            self.http_path = None
             self._connection_available = False
         
         # Lakebase OLTP configuration
         self.lakebase_instance_name = os.getenv('LAKEBASE_INSTANCE_NAME')
         self.lakebase_database = os.getenv('LAKEBASE_DB_NAME', 'databricks_postgres')
-        self.lakebase_schema = os.getenv('LAKEBASE_SCHEMA', 'public')
-        self._lakebase_pool = None
-        
-        if not self.http_path:
-            if self._connection_available:
-                print("⚠️  Warning: DATABRICKS_SQL_WAREHOUSE_PATH not set - using placeholder data")
-            self._connection_available = False
     
-    @lru_cache(maxsize=1)
-    def get_connection(self):
-        """Get or create a cached database connection"""
-        if not self._connection_available or not self.cfg:
+    def _get_sp_credentials(self, role: str = 'hq', property: str = None) -> tuple:
+        """
+        Get service principal credentials based on role and property
+        
+        Args:
+            role: 'hq' or 'pm'
+            property: 'austin-tx' or 'boston-ma' (only for PM role)
+        
+        Returns:
+            Tuple of (client_id, client_secret)
+        """
+        if role == 'hq':
+            client_id = os.getenv("HQ_SP_CLIENT_ID")
+            client_secret = os.getenv("HQ_SP_CLIENT_SECRET")
+            print(f"🔐 Using HQ service principal")
+        elif role == 'pm':
+            if property == 'boston-ma':
+                client_id = os.getenv("BOSTON_SP_CLIENT_ID")
+                client_secret = os.getenv("BOSTON_SP_CLIENT_SECRET")
+                print(f"🔐 Using Boston PM service principal")
+            elif property == 'austin-tx':
+                client_id = os.getenv("AUSTIN_SP_CLIENT_ID")
+                client_secret = os.getenv("AUSTIN_SP_CLIENT_SECRET")
+                print(f"🔐 Using Austin PM service principal")
+            else:
+                # Default to HQ if property not specified
+                client_id = os.getenv("HQ_SP_CLIENT_ID")
+                client_secret = os.getenv("HQ_SP_CLIENT_SECRET")
+                print(f"🔐 Using HQ service principal (PM property not specified)")
+        else:
+            # Fallback to HQ credentials
+            client_id = os.getenv("HQ_SP_CLIENT_ID")
+            client_secret = os.getenv("HQ_SP_CLIENT_SECRET")
+            print(f"🔐 Using HQ service principal (fallback)")
+        
+        return (client_id, client_secret)
+    
+    def _credential_provider(self, role: str = 'hq', property: str = None):
+        """Create OAuth service principal credential provider"""
+        client_id, client_secret = self._get_sp_credentials(role, property)
+        
+        if not client_id or not client_secret:
+            print(f"⚠️  Warning: Service principal credentials not found for role={role}, property={property}")
+            return None
+        
+        config = Config(
+            host=f"https://{self.server_hostname}",
+            client_id=client_id,
+            client_secret=client_secret
+        )
+        return oauth_service_principal(config)
+    
+    def get_connection(self, role: str = 'hq', property: str = None):
+        """
+        Get database connection with role-specific service principal
+        
+        Args:
+            role: 'hq' or 'pm'
+            property: property ID (for PM role)
+        
+        Returns:
+            SQL connection or None if connection fails
+        """
+        if not self._connection_available:
             return None
         
         try:
+            print(f'🔗 Connecting to Databricks ({role}): {self.server_hostname}')
             return sql.connect(
-                server_hostname=self.cfg.host.split("https://", 1)[-1],
+                server_hostname=self.server_hostname,
                 http_path=self.http_path,
-                credentials_provider=lambda: self.cfg.authenticate,
+                credentials_provider=lambda: self._credential_provider(role, property)
             )
         except Exception as e:
-            print(f"⚠️  Warning: Failed to connect to Databricks: {str(e)}")
-            self._connection_available = False
+            print(f"⚠️  Warning: Failed to connect to Databricks with {role} SP: {str(e)}")
             return None
     
-    def query(self, sql_query: str) -> List[Dict[str, Any]]:
+    def query(self, sql_query: str, role: str = 'hq', property: str = None) -> List[Dict[str, Any]]:
         """
         Execute a SQL query and return results as a list of dictionaries
         
         Args:
             sql_query: SQL query string to execute
+            role: 'hq' or 'pm' - determines which service principal to use
+            property: property ID (for PM role) - e.g. 'austin-tx' or 'boston-ma'
             
         Returns:
             List of dictionaries where each dict represents a row, or None if connection failed
         """
-        conn = self.get_connection()
+        conn = self.get_connection(role=role, property=property)
         
         if conn is None:
             return None
@@ -111,28 +184,12 @@ class DatabaseService:
             print(f"⚠️  Warning: Database query failed: {str(e)}")
             return None
     
-    def query_to_pandas(self, sql_query: str):
-        """
-        Execute a SQL query and return results as a pandas DataFrame
-        
-        Args:
-            sql_query: SQL query string to execute
-            
-        Returns:
-            pandas DataFrame with query results
-        """
-        conn = self.get_connection()
-        
-        with conn.cursor() as cursor:
-            cursor.execute(sql_query)
-            return cursor.fetchall_arrow().to_pandas()
-    
     # ========================================
     # Lakebase OLTP Methods
     # ========================================
     
-    def _get_lakebase_pool(self):
-        """Get or create a Lakebase connection pool with OAuth token rotation"""
+    def _get_lakebase_pool(self, role: str = 'hq', property: str = None):
+        """Get or create a Lakebase connection pool with OAuth token rotation and service principal auth"""
         if not LAKEBASE_AVAILABLE:
             print("⚠️  Warning: psycopg not installed - cannot connect to Lakebase")
             return None
@@ -141,41 +198,57 @@ class DatabaseService:
             print("⚠️  Warning: LAKEBASE_INSTANCE_NAME not set - Lakebase features unavailable")
             return None
         
-        if self._lakebase_pool is not None:
-            return self._lakebase_pool
+        # Note: We create a new pool with service principal credentials
+        # In production, you might want to cache pools by (role, property) combination
         
         try:
-            w = WorkspaceClient()
-            user = "voc-demo" #w.current_user.me().user_name
+            # Get service principal credentials for this role/property
+            client_id, client_secret = self._get_sp_credentials(role, property)
+            
+            # Create WorkspaceClient with service principal to get instance details
+            w = WorkspaceClient(
+                host=f"https://{self.server_hostname}" if not self.server_hostname.startswith('https://') else f"https://{self.server_hostname}",
+                client_id=client_id,
+                client_secret=client_secret
+            )
+            
+            user = "voc-demo"  # Database user
             host = w.database.get_database_instance(name=self.lakebase_instance_name).read_write_dns
             
-            self._lakebase_pool = ConnectionPool(
+            pool = ConnectionPool(
                 conninfo=f"host={host} dbname={self.lakebase_database} user={user}",
                 connection_class=RotatingTokenConnection,
-                kwargs={"_instance_name": self.lakebase_instance_name},
+                kwargs={
+                    "_instance_name": self.lakebase_instance_name,
+                    "_sp_client_id": client_id,
+                    "_sp_client_secret": client_secret,
+                    "_server_hostname": self.server_hostname
+                },
                 min_size=1,
                 max_size=5,
                 open=True,
             )
             
-            print(f"✅ Connected to Lakebase instance: {self.lakebase_instance_name}")
-            return self._lakebase_pool
+            print(f"✅ Connected to Lakebase instance: {self.lakebase_instance_name} (role={role}, property={property})")
+            return pool
             
         except Exception as e:
             print(f"⚠️  Warning: Failed to connect to Lakebase: {str(e)}")
             return None
     
-    def query_lakebase(self, sql_query: str) -> Optional[List[Dict[str, Any]]]:
+    def query_lakebase(self, sql_query: str, role: str = 'hq', property: str = None) -> Optional[List[Dict[str, Any]]]:
         """
         Execute a SQL query on Lakebase OLTP database and return results as list of dicts
         
         Args:
             sql_query: SQL query string to execute (PostgreSQL syntax)
+            role: 'hq' or 'pm' for service principal selection
+            property: property identifier (e.g., 'boston-ma', 'austin-tx') for PM role
             
         Returns:
             List of dictionaries where each dict represents a row, or None if connection failed
         """
-        pool = self._get_lakebase_pool()
+        pool = self._get_lakebase_pool(role=role, property=property)
         
         if pool is None:
             return None
@@ -201,50 +274,6 @@ class DatabaseService:
         except Exception as e:
             print(f"⚠️  Warning: Lakebase query failed: {str(e)}")
             return None
-    
-    def query_lakebase_to_pandas(self, sql_query: str) -> Optional[pd.DataFrame]:
-        """
-        Execute a SQL query on Lakebase OLTP database and return results as pandas DataFrame
-        
-        Args:
-            sql_query: SQL query string to execute (PostgreSQL syntax)
-            
-        Returns:
-            pandas DataFrame with query results, or None if connection failed
-        """
-        pool = self._get_lakebase_pool()
-        
-        if pool is None:
-            return None
-        
-        try:
-            with pool.connection() as conn:
-                with conn.cursor() as cur:
-                    cur.execute(sql_query)
-                    
-                    # Handle queries that don't return data
-                    if cur.description is None:
-                        return pd.DataFrame()
-                    
-                    columns = [d.name for d in cur.description]
-                    rows = cur.fetchall()
-                    
-            return pd.DataFrame(rows, columns=columns)
-            
-        except Exception as e:
-            print(f"⚠️  Warning: Lakebase query failed: {str(e)}")
-            return None
-    
-    def close_lakebase_pool(self):
-        """Close the Lakebase connection pool"""
-        if self._lakebase_pool is not None:
-            try:
-                self._lakebase_pool.close()
-                print("✅ Lakebase connection pool closed")
-            except Exception as e:
-                print(f"⚠️  Warning: Error closing Lakebase pool: {str(e)}")
-            finally:
-                self._lakebase_pool = None
 
 
 # Singleton instance

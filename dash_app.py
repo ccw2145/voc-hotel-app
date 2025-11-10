@@ -4,6 +4,7 @@ import dash_bootstrap_components as dbc
 from dotenv import load_dotenv
 import os
 import sys
+import urllib.parse
 import plotly.graph_objects as go
 
 # Load environment variables FIRST
@@ -15,8 +16,6 @@ sys.path.append(os.path.join(os.path.dirname(__file__), 'src'))
 # Import services
 from services.property_service import property_service
 from services.email_service import email_service
-from services.recommendations_service import recommendations_service
-from services.diagnostics_service import diagnostics_service
 from src.services.genie_service import genie_service
 
 # US City coordinates for mapping
@@ -139,6 +138,57 @@ app.index_string = '''
             }
             .Select-control {
                 border-radius: 0.25rem !important;
+            }
+            /* Ensure dropdowns can expand properly */
+            .Select-menu-outer {
+                z-index: 9999 !important;
+                max-height: 300px !important;
+                position: absolute !important;
+                background: white !important;
+                box-shadow: 0 4px 12px rgba(0,0,0,0.15) !important;
+            }
+            .Select-menu {
+                max-height: 280px !important;
+                overflow-y: auto !important;
+                background: white !important;
+            }
+            /* Dash dropdown improvements */
+            .dash-dropdown {
+                z-index: 1000 !important;
+                position: relative !important;
+                min-height: 38px !important;
+            }
+            .dash-dropdown .Select-menu-outer {
+                z-index: 9999 !important;
+            }
+            /* Prevent dropdown flashing */
+            .Select-control {
+                transition: none !important;
+            }
+            .Select-menu-outer {
+                transition: none !important;
+            }
+            /* Ensure parent containers don't clip dropdowns */
+            .card {
+                overflow: visible !important;
+            }
+            .card-body {
+                overflow: visible !important;
+            }
+            /* Container overflow settings */
+            .container, .container-fluid {
+                overflow: visible !important;
+            }
+            /* Row overflow settings */
+            .row {
+                overflow: visible !important;
+            }
+            /* Tab content overflow */
+            .tab-content {
+                overflow: visible !important;
+            }
+            .tab-pane {
+                overflow: visible !important;
             }
             h1 {
                 font-weight: 600;
@@ -282,37 +332,61 @@ def create_hq_properties():
     return html.Div([
         dbc.Container([
             html.Div([
-                html.H1("Property List", className="mb-2", style={'fontWeight': '700'}),
+                html.H1("All Properties", className="mb-2", style={'fontWeight': '700'}),
                 html.Div(id='hq-properties-subtitle', className="mb-4"),
             ], className="my-4 py-3"),
         ], style={'maxWidth': '1400px'}),
         
-        # Executive KPIs Section
-        html.Div(id='hq-executive-kpis', className="mb-5"),
-        
-        # Analytics & Insights Section
+        # Timeframe Selector for Stats
         dbc.Container([
             dbc.Card([
                 dbc.CardBody([
-                    html.H4("📊 Issue Analytics", className="mb-4", style={'fontWeight': '600'}),
-                    dcc.Loading(
-                        id="loading-analytics",
-                        type="default",
-                        children=[
-                            dbc.Row([
-                                dbc.Col([
-                                    html.Div(id='trend-chart-container')
-                                ], md=6),
-                                dbc.Col([
-                                    html.Div(id='aspect-breakdown-chart')
-                                ], md=6),
-                            ]),
-                            dbc.Row([
-                                dbc.Col([
-                                    html.Div(id='regional-comparison-chart')
-                                ], md=12)
-                            ], className="mt-4")
-                        ]
+                    dbc.Row([
+                        dbc.Col([
+                            html.Label("Stats Timeframe:", style={'fontWeight': '600', 'marginRight': '1rem', 'fontSize': '0.95rem'}),
+                        ], width="auto", className="d-flex align-items-center"),
+                        dbc.Col([
+                            dbc.RadioItems(
+                                id='hq-stats-timeframe-selector',
+                                options=[
+                                    {'label': 'Last 7 Days', 'value': 7},
+                                    {'label': 'Last 14 Days', 'value': 14},
+                                    {'label': 'Last 21 Days', 'value': 21},
+                                    {'label': 'All Historical', 'value': 'all'}
+                                ],
+                                value='all',  # Default to All Historical
+                                inline=True,
+                                style={'fontSize': '0.9rem'}
+                            ),
+                        ], className="d-flex align-items-center"),
+                        dbc.Col([
+                            html.Div(id='hq-stats-latest-date', className="text-end"),
+                        ], className="d-flex align-items-center justify-content-end"),
+                    ], className="align-items-center"),
+                ], style={'padding': '0.75rem 1.25rem'})
+            ], style={'border': 'none', 'borderRadius': '8px', 'backgroundColor': '#f8f9fa'})
+        ], style={'maxWidth': '1400px'}, className="mb-3"),
+        
+        # Executive KPIs Section
+        dcc.Loading(
+            id="loading-kpis",
+            type="default",
+            children=html.Div(id='hq-executive-kpis', className="mb-5")
+        ),
+        
+        # HQ Overview Dashboard Section
+        dbc.Container([
+            dbc.Card([
+                dbc.CardBody([
+                    html.H4("📊 Issues Overview", className="mb-4", style={'fontWeight': '600'}),
+                    html.Iframe(
+                        src="https://fe-vm-voc-lakehouse-inn-workspace.cloud.databricks.com/embed/dashboardsv3/01f0b6901b281266b22ae454018a5b82?o=604717363374831",
+                        style={
+                            'width': '100%',
+                            'height': '800px',
+                            'border': 'none',
+                            'borderRadius': '8px',
+                        }
                     )
                 ], style={'padding': '1.5rem'})
             ], style={'border': 'none', 'borderRadius': '12px'}, className="mb-5")
@@ -326,8 +400,12 @@ def create_hq_properties():
                     html.P("Click on any location to jump to that property below", 
                           className="text-muted mb-3",
                           style={'fontSize': '0.95rem'}),
-                    dcc.Graph(id='properties-map', config={'displayModeBar': False}, 
-                             style={'height': '500px'}),
+                    dcc.Loading(
+                        id="loading-map",
+                        type="default",
+                        children=dcc.Graph(id='properties-map', config={'displayModeBar': False}, 
+                                         style={'height': '500px'})
+                    ),
                 ], style={'padding': '1.5rem'})
             ], style={'border': 'none', 'borderRadius': '12px'}, className="mb-5")
         ], style={'maxWidth': '1400px'}),
@@ -338,12 +416,20 @@ def create_hq_properties():
                 html.Span("🚨", style={'marginRight': '0.5rem'}),
                 "Properties Requiring Attention"
             ], className="mb-4", style={'fontWeight': '600', 'fontSize': '1.75rem'}),
-            html.Div(id='flagged-properties-grouped')
+            dcc.Loading(
+                id="loading-flagged-properties",
+                type="default",
+                children=html.Div(id='flagged-properties-grouped')
+            )
         ], style={'maxWidth': '1400px'}, className="mb-5"),
         
         # All Properties - Compact Summary
         dbc.Container([
-            html.Div(id='all-properties-summary')
+            dcc.Loading(
+                id="loading-all-properties",
+                type="default",
+                children=html.Div(id='all-properties-summary')
+            )
         ], style={'maxWidth': '1400px'}, className="mb-5"),
         
         # Hidden location store for scroll targeting
@@ -359,22 +445,43 @@ def create_hq_dashboard():
                       className="mb-4",
                       style={'fontSize': '1.125rem', 'color': '#6c757d'}),
             ], className="my-4"),
+            
+            # Property selector dropdown
+            dbc.Card([
+                dbc.CardBody([
+                    html.Label("Select Property:", 
+                              className="mb-2",
+                              style={'fontWeight': '600', 'fontSize': '1rem'}),
+                    dcc.Dropdown(
+                        id='hq-property-select',
+                        placeholder="Select a property...",
+                        className="mb-2",
+                        style={'fontSize': '1rem'},
+                        optionHeight=35,
+                        maxHeight=300
+                    ),
+                ], style={'padding': '1.5rem', 'overflow': 'visible'})
+            ], className="mb-4", style={'border': 'none', 'borderRadius': '12px', 'position': 'relative', 'zIndex': '100'}),
         ], style={'maxWidth': '1400px'}),
         
         # Property details (stays visible)
         dbc.Container([
-            html.Div(id='hq-selected-property-details-container'),
+            dcc.Loading(
+                id="loading-property-details",
+                type="default",
+                children=html.Div(id='hq-selected-property-details-container')
+            ),
         ], style={'maxWidth': '1400px'}, className="mb-4"),
         
         # TABS SECTION
         dbc.Container([
             dbc.Tabs([
-                # Tab 1: Property Analytics Dashboard
+                # Tab 1: Property Ovewrview
                 dbc.Tab(
                     html.Div([
                         html.Div(id='hq-filtered-dashboard-iframe', className="mt-3"),
                     ], style={'padding': '1.5rem 0'}),
-                    label="Property Analytics Dashboard",
+                    label="Property Overview",
                     tab_id="analytics-tab",
                 ),
                 
@@ -382,7 +489,11 @@ def create_hq_dashboard():
                 dbc.Tab(
                     html.Div([
                         # Aspect Analysis Table
-                        html.Div(id='hq-aspect-analysis-table', className="mb-4"),
+                        dcc.Loading(
+                            id="loading-aspect-analysis",
+                            type="default",
+                            children=html.Div(id='hq-aspect-analysis-table', className="mb-4")
+                        ),
                         
                         # Reviews Deep Dive Section
                         dbc.Card([
@@ -391,15 +502,34 @@ def create_hq_dashboard():
                                 html.P("Select an aspect to analyze detailed review insights", 
                                       className="text-muted mb-3",
                                       style={'fontSize': '0.95rem'}),
-                                dcc.Dropdown(
-                                    id='hq-aspect-selector',
-                                    placeholder="Select an aspect to analyze...",
-                                    className="mb-3",
-                                    style={'fontSize': '1rem'}
-                                ),
-                            ], style={'padding': '1.5rem'})
-                        ], className="mb-4", style={'border': 'none', 'borderRadius': '12px'}),
-                        html.Div(id='hq-reviews-deep-dive-content'),
+                                html.Div([
+                                    dcc.Dropdown(
+                                        id='hq-aspect-selector',
+                                        placeholder="Select an aspect to analyze...",
+                                        className="mb-3",
+                                        style={'fontSize': '1rem'},
+                                        optionHeight=35,
+                                        maxHeight=250
+                                    ),
+                                ], style={'position': 'relative', 'zIndex': '50', 'marginBottom': '1rem'}),
+                            ], style={'padding': '1.5rem', 'overflow': 'visible'})
+                        ], className="mb-5", style={'border': 'none', 'borderRadius': '12px', 'position': 'relative'}),
+                        # Deep Dive Content (Issue Summary, Recommendations, etc.)
+                        dcc.Loading(
+                            id="loading-reviews-deep-dive",
+                            type="default",
+                            children=html.Div(id='hq-reviews-deep-dive-content')
+                        ),
+                        
+                        # Individual Reviews Browser (separate from deep dive content)
+                        html.Div([
+                            html.Div(id='hq-review-browser-controls'),  # Controls (timeframe, filter)
+                            dcc.Loading(
+                                id="loading-hq-individual-reviews",
+                                type="default",
+                                children=html.Div(id='hq-individual-reviews-list')
+                            )
+                        ], id='hq-individual-reviews-section', style={'marginTop': '2rem'}),
                     ], style={'padding': '1.5rem 0'}),
                     label="Aspect Analysis + Review Deep Dive",
                     tab_id="aspect-tab",
@@ -433,9 +563,33 @@ def create_hq_dashboard():
         
         # Ask Genie - Floating section (always visible)
         dbc.Container([
+            # Conversation history storage
+            dcc.Store(id='hq-genie-conversation-history', data=[]),
+            dcc.Store(id='hq-genie-conversation-id', data=None),
+            
             dbc.Card([
                 dbc.CardBody([
-                    html.H4("Ask Genie", className="mb-3", style={'fontWeight': '600'}),
+                    html.Div([
+                        html.H4("Ask Genie", className="mb-0", style={'fontWeight': '600'}),
+                        dbc.Button(
+                            [html.I(className="bi bi-arrow-clockwise me-1"), "Clear Chat"],
+                            id='btn-clear-genie-hq',
+                            color="light",
+                            size="sm",
+                            outline=True,
+                            style={'borderRadius': '6px'}
+                        ),
+                    ], style={'display': 'flex', 'justifyContent': 'space-between', 'alignItems': 'center', 'marginBottom': '1rem'}),
+                    
+                    # Conversation history display
+                    html.Div(id='hq-genie-conversation-display', className="mb-3", style={
+                        'maxHeight': '400px',
+                        'overflowY': 'auto',
+                        'padding': '0.5rem',
+                        'borderRadius': '8px',
+                    }),
+                    
+                    # Input area
                     dbc.InputGroup([
                         dbc.Input(
                             id='hq-genie-input',
@@ -444,13 +598,17 @@ def create_hq_dashboard():
                             style={'borderRadius': '8px 0 0 8px', 'padding': '0.75rem'}
                         ),
                         dbc.Button(
-                            "Ask",
+                            [html.I(className="bi bi-send-fill me-1"), "Ask"],
                             id='btn-ask-genie-hq',
                             color="primary",
                             style={'borderRadius': '0 8px 8px 0', 'padding': '0.75rem 1.5rem'}
                         ),
-                    ], className="mb-3"),
-                    html.Div(id='hq-genie-results-container'),
+                    ], className="mb-0"),
+                    dcc.Loading(
+                        id="loading-hq-genie",
+                        type="default",
+                        children=html.Div(id='hq-genie-results-container', style={'display': 'none'})
+                    ),
                 ], style={'padding': '1.5rem'})
             ], style={'border': 'none', 'borderRadius': '12px', 'backgroundColor': '#f8f9fa'})
         ], style={'maxWidth': '1400px'}, className="my-4"),
@@ -495,80 +653,174 @@ def create_hq_email():
 
 def create_pm_dashboard():
     return html.Div([
+        # Property selection buttons at the top
         dbc.Container([
             html.Div([
-                html.H1("Property Manager Dashboard", className="mb-2", style={'fontWeight': '700'}),
-                html.P("Monitor your property's performance", 
-                      className="mb-4",
+                html.Div([
+                    html.H1("My Property Dashboard", className="mb-3", style={'fontWeight': '700', 'display': 'inline-block', 'marginRight': '2rem'}),
+                    html.Div([
+                        html.Span("Select Property:", className="me-3", style={'fontWeight': '600', 'fontSize': '1rem', 'color': '#495057'}),
+                        dbc.ButtonGroup([
+                            dbc.Button(
+                                [html.I(className="bi bi-building me-2"), "Austin, TX"],
+                                id={'type': 'pm-property-btn', 'location': 'Austin, TX'},
+                                color="primary",
+                                outline=True,
+                                className="me-2",
+                                style={'borderRadius': '8px', 'padding': '0.5rem 1.5rem', 'fontWeight': '500'}
+                            ),
+                            dbc.Button(
+                                [html.I(className="bi bi-building me-2"), "Boston, MA"],
+                                id={'type': 'pm-property-btn', 'location': 'Boston, MA'},
+                                color="primary",
+                                outline=True,
+                                style={'borderRadius': '8px', 'padding': '0.5rem 1.5rem', 'fontWeight': '500'}
+                            ),
+                        ]),
+                    ], style={'display': 'inline-block'}),
+                ], style={'display': 'flex', 'alignItems': 'center', 'justifyContent': 'space-between', 'flexWrap': 'wrap'}),
+                html.P("Monitor your property's performance and guest satisfaction", 
+                      className="mb-0 mt-3",
                       style={'fontSize': '1.125rem', 'color': '#6c757d'}),
-            ], className="my-4"),
-            
-            # Property selection dropdown
-            dbc.Card([
-                dbc.CardBody([
-                    html.Label("Select Your Property:", 
-                              className="mb-2",
-                              style={'fontWeight': '600', 'fontSize': '1rem'}),
-                    dcc.Dropdown(
-                        id='pm-property-select',
-                        placeholder="Select a property...",
-                        className="mb-2",
-                        style={'fontSize': '1rem'}
-                    ),
-                ], style={'padding': '1.5rem'})
-            ], className="mb-4", style={'border': 'none', 'borderRadius': '12px'}),
-        ], style={'maxWidth': '1400px'}),
+            ], className="my-4 py-3"),
+        ], fluid=True, style={'maxWidth': '1400px', 'borderBottom': '1px solid #e0e0e0', 'paddingBottom': '1rem', 'marginBottom': '2rem'}),
         
+        # Hidden store for selected property
+        dcc.Store(id='pm-selected-property-store', data=None),
+        
+        # Property details (stays visible)
         dbc.Container([
-            html.Div(id='pm-property-details'),
+            dcc.Loading(
+                id="loading-pm-property-details",
+                type="default",
+                children=html.Div(id='pm-selected-property-details-container')
+            ),
         ], style={'maxWidth': '1400px'}, className="mb-4"),
         
-        # Reviews Deep Dive Section for PM
+        # TABS SECTION (similar to HQ but only 2 tabs)
         dbc.Container([
-            dbc.Card([
-                dbc.CardBody([
-                    html.H4("📊 Reviews Deep Dive", className="mb-3", style={'fontWeight': '600'}),
-                    html.P("Select an aspect to analyze detailed review insights", 
-                          className="text-muted mb-3",
-                          style={'fontSize': '0.95rem'}),
-                    dcc.Dropdown(
-                        id='pm-aspect-selector',
-                        placeholder="Select an aspect to analyze...",
-                        className="mb-3",
-                        style={'fontSize': '1rem'}
-                    ),
-                ], style={'padding': '1.5rem'})
-            ], className="mb-4", style={'border': 'none', 'borderRadius': '12px'}),
-            html.Div(id='pm-reviews-deep-dive-content'),
+            dbc.Tabs([
+                # Tab 1: Property Ovewrview
+                dbc.Tab(
+                    html.Div([
+                        html.Div(id='pm-filtered-dashboard-iframe', className="mt-3"),
+                    ], style={'padding': '1.5rem 0'}),
+                    label="Property Ovewrview",
+                    tab_id="pm-analytics-tab",
+                ),
+                
+                # Tab 2: Aspect Analysis + Review Deep Dive
+                dbc.Tab(
+                    html.Div([
+                        # Aspect Analysis Table
+                        dcc.Loading(
+                            id="loading-pm-aspect-analysis",
+                            type="default",
+                            children=html.Div(id='pm-aspect-analysis-table', className="mb-4")
+                        ),
+                        
+                        # Reviews Deep Dive Section
+                        dbc.Card([
+                            dbc.CardBody([
+                                html.H4("📊 Reviews Deep Dive", className="mb-3", style={'fontWeight': '600'}),
+                                html.P("Select an aspect to analyze detailed review insights", 
+                                      className="text-muted mb-3",
+                                      style={'fontSize': '0.95rem'}),
+                                html.Div([
+                                    dcc.Dropdown(
+                                        id='pm-aspect-selector',
+                                        placeholder="Select an aspect to analyze...",
+                                        className="mb-3",
+                                        style={'fontSize': '1rem'},
+                                        optionHeight=35,
+                                        maxHeight=250
+                                    ),
+                                ], style={'position': 'relative', 'zIndex': '50', 'marginBottom': '1rem'}),
+                            ], style={'padding': '1.5rem', 'overflow': 'visible'})
+                        ], className="mb-5", style={'border': 'none', 'borderRadius': '12px', 'position': 'relative'}),
+                        # Deep Dive Content (Issue Summary, Recommendations, etc.)
+                        dcc.Loading(
+                            id="loading-pm-reviews-deep-dive",
+                            type="default",
+                            children=html.Div(id='pm-reviews-deep-dive-content')
+                        ),
+                        
+                        # Individual Reviews Browser (separate from deep dive content)
+                        html.Div([
+                            html.Div(id='pm-review-browser-controls'),  # Controls (timeframe, filter)
+                            dcc.Loading(
+                                id="loading-pm-individual-reviews",
+                                type="default",
+                                children=html.Div(id='pm-individual-reviews-list')
+                            )
+                        ], id='pm-individual-reviews-section', style={'marginTop': '2rem'}),
+                    ], style={'padding': '1.5rem 0'}),
+                    label="Aspect Analysis + Review Deep Dive",
+                    tab_id="pm-aspect-tab",
+                ),
+            ], id="pm-dashboard-tabs", active_tab="pm-analytics-tab"),
         ], style={'maxWidth': '1400px'}, className="my-4"),
         
+        # Ask Genie - Floating section (always visible)
         dbc.Container([
-            # Genie Query Section
+            # Conversation history storage
+            dcc.Store(id='pm-genie-conversation-history', data=[]),
+            dcc.Store(id='pm-genie-conversation-id', data=None),
+            
             dbc.Card([
                 dbc.CardBody([
-                    html.H4("Ask Genie", className="mb-3", style={'fontWeight': '600'}),
+                    html.Div([
+                        html.H4("Ask Genie", className="mb-0", style={'fontWeight': '600'}),
+                        dbc.Button(
+                            [html.I(className="bi bi-arrow-clockwise me-1"), "Clear Chat"],
+                            id='btn-clear-genie-pm',
+                            color="light",
+                            size="sm",
+                            outline=True,
+                            style={'borderRadius': '6px'}
+                        ),
+                    ], style={'display': 'flex', 'justifyContent': 'space-between', 'alignItems': 'center', 'marginBottom': '1rem'}),
+                    
+                    # Conversation history display
+                    html.Div(id='pm-genie-conversation-display', className="mb-3", style={
+                        'maxHeight': '400px',
+                        'overflowY': 'auto',
+                        'padding': '0.5rem',
+                        'borderRadius': '8px',
+                    }),
+                    
+                    # Input area
                     dbc.InputGroup([
                         dbc.Input(
                             id='pm-genie-input',
-                            placeholder="Ask a question about this property...",
+                            placeholder="Ask a question about your property...",
                             type="text",
                             style={'borderRadius': '8px 0 0 8px', 'padding': '0.75rem'}
                         ),
                         dbc.Button(
-                            "Ask",
+                            [html.I(className="bi bi-send-fill me-1"), "Ask"],
                             id='btn-ask-genie-pm',
-                            color="danger",
-                            style={'borderRadius': '0 8px 8px 0', 'padding': '0.75rem 1.5rem', 'fontWeight': '500'}
+                            color="primary",
+                            style={'borderRadius': '0 8px 8px 0', 'padding': '0.75rem 1.5rem'}
                         ),
-                    ]),
+                    ], className="mb-0"),
+                    dcc.Loading(
+                        id="loading-pm-genie",
+                        type="default",
+                        children=html.Div(id='pm-genie-results', style={'display': 'none'})
+                    ),
                 ], style={'padding': '1.5rem'})
-            ], className="my-4", style={'border': 'none', 'borderRadius': '12px'}),
-            html.Div(id='pm-genie-results', className="my-4"),
-        ], style={'maxWidth': '1400px'}),
+            ], style={'border': 'none', 'borderRadius': '12px', 'backgroundColor': '#f8f9fa'})
+        ], style={'maxWidth': '1400px'}, className="my-4"),
         
+        # Back to Role Selection button
         dbc.Container([
-            dbc.Button("Back to Role Selection", id='btn-back-to-roles', color="secondary", 
-                      size="lg", className="mb-4", style={'fontWeight': '500'})
+            dbc.Row([
+                dbc.Col([
+                    dbc.Button("Back to Role Selection", id='btn-back-to-roles', color="secondary", 
+                              size="lg", style={'fontWeight': '500'})
+                ], width="auto"),
+            ], className="mb-4"),
         ], style={'maxWidth': '1400px'}),
     ], style={'backgroundColor': '#f8f9fa', 'minHeight': '100vh', 'paddingBottom': '3rem'})
 
@@ -597,11 +849,48 @@ app.layout = html.Div([
         html.Div(id='selected-property-details'),
         html.Div(id='pm-property-details'),
     ], style={'display': 'none'}),
+    
+    # Modal for "no reviews" message
+    dbc.Modal([
+        dbc.ModalHeader(dbc.ModalTitle("No Reviews Available")),
+        dbc.ModalBody([
+            html.P("This property has no review data in the current timeframe."),
+            html.P("There is no detailed information to display at this time."),
+        ]),
+        dbc.ModalFooter(
+            dbc.Button("Close", id="close-no-reviews-modal", className="ms-auto", n_clicks=0)
+        ),
+    ], id="no-reviews-modal", is_open=False),
 ])
 
 # ========================================
 # CALLBACKS
 # ========================================
+
+# Helper function to extract role and property for service principal authentication
+def get_auth_context(persona, pm_property=None, hq_property=None):
+    """
+    Extract role and property for service principal authentication
+    
+    Args:
+        persona: Current persona ('Headquarters' or 'Property Manager' or 'Role Selection')
+        pm_property: PM selected property (e.g., 'austin-tx' or 'boston-ma')
+        hq_property: HQ selected property (optional, for future use)
+    
+    Returns:
+        Tuple of (role, property) where:
+        - role: 'hq' or 'pm'
+        - property: 'austin-tx', 'boston-ma', or None
+    """
+    if not persona or persona == 'Role Selection':
+        return ('hq', None)  # Default to HQ
+    
+    if persona == 'Headquarters':
+        return ('hq', None)
+    elif persona == 'Property Manager':
+        return ('pm', pm_property)
+    else:
+        return ('hq', None)  # Fallback
 
 # Screen navigation and header update
 @app.callback(
@@ -747,17 +1036,41 @@ def load_hq_properties_subtitle(screen):
 # Load executive KPIs for HQ
 @app.callback(
     Output('hq-executive-kpis', 'children'),
-    Input('current-screen', 'data'),
+    [Input('current-screen', 'data'),
+     Input('hq-stats-timeframe-selector', 'value')],
     prevent_initial_call=False
 )
-def load_executive_kpis(screen):
+def load_executive_kpis(screen, timeframe):
+    print(f"🔍 load_executive_kpis called: screen={screen}, timeframe={timeframe}")
+    
     if screen != 'hq-properties':
+        print(f"   ⏭️  Skipping KPIs - screen is '{screen}'")
         return html.Div()
     
+    print(f"   ✅ Screen is 'hq-properties', loading KPIs...")
+    
     try:
-        print(f"🔄 Loading executive KPIs for screen: {screen}")
-        kpis = property_service.get_diagnostics_kpis()
+        # HQ Properties overview always uses HQ role with all properties
+        property_service.set_auth_context(role='hq', property=None)
+        
+        # Convert 'all' to None for historical data
+        days = None if timeframe == 'all' else timeframe
+        
+        print(f"🔄 Loading executive KPIs for HQ Properties (role=hq, property=None, days={days})")
+        kpis = property_service.get_diagnostics_kpis(days=days)
         print(f"✅ Loaded KPIs: {kpis}")
+        
+        # Determine timeframe label for display
+        if days is None:
+            timeframe_label = "All Historical"
+        elif days == 7:
+            timeframe_label = "Last 7 Days"
+        elif days == 14:
+            timeframe_label = "Last 14 Days"
+        elif days == 21:
+            timeframe_label = "Last 21 Days"
+        else:
+            timeframe_label = f"Last {days} Days"
         
         # Calculate trend indicators
         def get_trend_indicator(change_value):
@@ -785,13 +1098,13 @@ def load_executive_kpis(screen):
                                     html.I(className="bi bi-file-earmark-text", 
                                           style={'fontSize': '1.5rem', 'color': '#17a2b8', 'marginBottom': '0.5rem'}),
                                 ]),
-                                html.H3(str(kpis['reviews_processed_today']), 
+                                html.H3(str(kpis['reviews_processed']), 
                                        className="mb-1",
                                        style={'fontWeight': '700', 'fontSize': '2.5rem', 'color': '#212529'}),
                                 html.P("Reviews Processed", 
                                       className="mb-2 text-muted",
                                       style={'fontSize': '0.95rem', 'fontWeight': '500'}),
-                                html.Span("Today", style={'color': '#6c757d', 'fontSize': '0.875rem'})
+                                html.Span(timeframe_label, style={'color': '#6c757d', 'fontSize': '0.875rem'})
                             ])
                         ], style={'padding': '1.5rem'})
                     ], style={'border': 'none', 'borderRadius': '12px', 'height': '100%'})
@@ -812,7 +1125,7 @@ def load_executive_kpis(screen):
                                 html.P("Overall Satisfaction", 
                                       className="mb-2 text-muted",
                                       style={'fontSize': '0.95rem', 'fontWeight': '500'}),
-                                html.Span(f"{kpis['avg_negative_reviews_7d']}% negative (7d)", 
+                                html.Span(f"{kpis['avg_negative_reviews']}% negative ({timeframe_label})", 
                                          style={'color': '#6c757d', 'fontSize': '0.875rem'})
                             ])
                         ], style={'padding': '1.5rem'})
@@ -874,10 +1187,43 @@ def load_executive_kpis(screen):
             ], className="g-3")
         ], style={'maxWidth': '1400px'})
         
+        print(f"✅ Successfully created KPI HTML, returning to frontend")
+        
     except Exception as e:
         print(f"❌ Error loading executive KPIs: {str(e)}")
         import traceback
         traceback.print_exc()
+        return html.Div("Error loading KPIs", style={'color': 'red', 'padding': '20px'})
+
+# Update latest review date display
+@app.callback(
+    Output('hq-stats-latest-date', 'children'),
+    [Input('current-screen', 'data'),
+     Input('hq-stats-timeframe-selector', 'value')],
+    prevent_initial_call=False
+)
+def update_latest_date_display(screen, timeframe):
+    if screen != 'hq-properties':
+        return html.Div()
+    
+    try:
+        # Set auth context
+        property_service.set_auth_context(role='hq', property=None)
+        
+        # Convert 'all' to None for historical data
+        days = None if timeframe == 'all' else timeframe
+        
+        # Get review stats to fetch latest review date
+        review_stats = property_service.get_summary_stats_from_reviews(days=days)
+        latest_date = review_stats.get('latest_review_date', 'N/A')
+        
+        return html.Span([
+            html.I(className="bi bi-calendar-event me-2", style={'fontSize': '0.85rem', 'color': '#6c757d'}),
+            html.Span("Latest Review: ", style={'color': '#6c757d', 'fontSize': '0.85rem', 'fontWeight': '500'}),
+            html.Span(latest_date, style={'color': '#495057', 'fontSize': '0.85rem', 'fontWeight': '600'})
+        ])
+    except Exception as e:
+        print(f"⚠️ Error loading latest date: {str(e)}")
         return html.Div()
 
 # Load properties map
@@ -958,15 +1304,16 @@ def load_properties_map(screen):
                     if d['has_issues']:
                         hover_text = f"<b>{d['name']}</b><br>Status: {d['status']}<br>Click to view details"
                     else:
-                        hover_text = f"<b>{d['name']}</b><br>Status: {d['status']}<br>No issues - All clear!"
+                        hover_text = f"<b>{d['name']}</b><br>Status: {d['status']}<br>Click to view"
                     hover_texts.append(hover_text)
                 
-                # Only make flagged properties clickable (have customdata)
-                # Healthy properties won't trigger scroll since they're not in the accordion
-                if status in ['Critical', 'Warning']:
-                    customdata = [d['id'] for d in status_data]
-                else:
-                    customdata = None  # Healthy properties not clickable
+                # Make ALL properties clickable - pass metadata as JSON
+                import json
+                customdata = [json.dumps({
+                    'property_id': d['id'],
+                    'has_issues': d['has_issues'],
+                    'has_reviews': d.get('has_reviews', True)  # Assume True if not explicitly False
+                }) for d in status_data]
                 
                 fig.add_trace(go.Scattergeo(
                     lon=[d['lon'] for d in status_data],
@@ -1024,38 +1371,139 @@ def load_properties_map(screen):
         traceback.print_exc()
         return go.Figure()
 
-# Handle map clicks and scroll to property
+# Handle map clicks and navigate to HQ Health Dashboard
 @app.callback(
-    Output('scroll-to-property', 'data'),
+    [Output('current-screen', 'data', allow_duplicate=True),
+     Output('selected-property-id', 'data', allow_duplicate=True),
+     Output('no-reviews-modal', 'is_open')],
     Input('properties-map', 'clickData'),
     prevent_initial_call=True
 )
 def handle_map_click(click_data):
     if not click_data:
         print("⚠️ Map clicked but no click_data")
-        return None
+        return dash.no_update, dash.no_update, dash.no_update
     
     try:
-        # Extract property ID from customdata
-        customdata = click_data['points'][0].get('customdata')
+        # Extract property data from customdata (now a JSON string)
+        customdata_str = click_data['points'][0].get('customdata')
         
-        if not customdata:
-            print("⚠️ Map clicked but no customdata (probably a healthy property - not clickable)")
-            return None
-            
-        property_id = customdata
+        if not customdata_str:
+            print("⚠️ Map clicked but no customdata")
+            return dash.no_update, dash.no_update, dash.no_update
+        
+        import json
+        property_data = json.loads(customdata_str)
+        property_id = property_data['property_id']
+        has_issues = property_data['has_issues']
+        has_reviews = property_data.get('has_reviews', True)
+        
         print(f"\n{'='*60}")
         print(f"🗺️ MAP CLICKED")
         print(f"   Property ID: {property_id}")
-        print(f"   Will scroll to: property-card-{property_id}")
+        print(f"   Has Issues: {has_issues}")
+        print(f"   Has Reviews: {has_reviews}")
+        
+        # If healthy property with no reviews -> show modal
+        if not has_issues and not has_reviews:
+            print(f"   Action: Showing no-reviews modal")
+            print(f"{'='*60}\n")
+            return dash.no_update, dash.no_update, True
+        
+        # Otherwise -> navigate to dashboard
+        print(f"   Action: Navigating to hq-dashboard")
         print(f"{'='*60}\n")
-        return property_id
+        return 'hq-dashboard', property_id, dash.no_update
+        
     except Exception as e:
         print(f"❌ Error handling map click: {str(e)}")
         print(f"   click_data: {click_data}")
         import traceback
         traceback.print_exc()
-        return None
+        return dash.no_update, dash.no_update, dash.no_update
+
+# Close no reviews modal
+@app.callback(
+    Output('no-reviews-modal', 'is_open', allow_duplicate=True),
+    Input('close-no-reviews-modal', 'n_clicks'),
+    State('no-reviews-modal', 'is_open'),
+    prevent_initial_call=True
+)
+def close_no_reviews_modal(n_clicks, is_open):
+    if n_clicks and is_open:
+        return False
+    return dash.no_update
+
+# Load HQ property dropdown options
+@app.callback(
+    Output('hq-property-select', 'options'),
+    Input('current-screen', 'data'),
+    prevent_initial_call=False
+)
+def load_hq_property_options(screen):
+    if screen != 'hq-dashboard':
+        return dash.no_update
+    
+    try:
+        properties = property_service.get_all_properties()
+        
+        # Separate properties with and without issues
+        properties_with_issues = [p for p in properties if p.get('aspects')]
+        properties_without_issues = [p for p in properties if not p.get('aspects')]
+        
+        # Sort each group alphabetically
+        properties_with_issues.sort(key=lambda x: x['name'])
+        properties_without_issues.sort(key=lambda x: x['name'])
+        
+        # Create options with visual differentiation
+        options = []
+        
+        # Properties with issues first (with attention icon)
+        for p in properties_with_issues:
+            options.append({
+                'label': f"📍 {p['name']}", 
+                'value': p['property_id']
+            })
+        
+        # Properties without issues at the bottom (with checkmark)
+        for p in properties_without_issues:
+            options.append({
+                'label': f"✓ {p['name']} (No Issues)", 
+                'value': p['property_id']
+            })
+        
+        print(f"✅ Loaded {len(options)} properties for HQ dashboard dropdown")
+        print(f"   📊 {len(properties_with_issues)} with issues, {len(properties_without_issues)} without issues")
+        return options
+    except Exception as e:
+        print(f"⚠️  Error loading HQ dashboard properties: {str(e)}")
+        return dash.no_update
+
+# Sync HQ property dropdown with selected-property-id
+@app.callback(
+    Output('hq-property-select', 'value'),
+    Input('selected-property-id', 'data'),
+    State('current-screen', 'data'),
+    prevent_initial_call=False
+)
+def sync_hq_property_dropdown(property_id, screen):
+    if screen != 'hq-dashboard' or not property_id:
+        return dash.no_update
+    print(f"🔄 Syncing HQ dropdown to property: {property_id}")
+    return property_id
+
+# Update selected-property-id when HQ dropdown changes
+@app.callback(
+    Output('selected-property-id', 'data', allow_duplicate=True),
+    Input('hq-property-select', 'value'),
+    State('current-screen', 'data'),
+    prevent_initial_call=True
+)
+def update_selected_property_from_hq_dropdown(property_id, screen):
+    if screen != 'hq-dashboard' or not property_id:
+        return dash.no_update
+    print(f"📍 HQ dropdown changed to property: {property_id}")
+    return property_id
 
 # Load flagged properties grouped by region
 @app.callback(
@@ -1075,8 +1523,8 @@ def load_flagged_properties_grouped(screen):
             return dbc.Alert("✅ No properties flagged for attention.", color="success", className="mb-0")
         
         # Limit to top regions and add "Show More" option
-        show_all_regions = len(grouped_data) <= 10
-        regions_to_show = list(grouped_data.items())[:10] if not show_all_regions else list(grouped_data.items())
+        show_all_regions = len(grouped_data) <= 5
+        regions_to_show = list(grouped_data.items())[:5] if not show_all_regions else list(grouped_data.items())
         
         accordion_items = []
         
@@ -1530,129 +1978,23 @@ def load_expanded_properties_list(is_open, screen):
 # Note: Healthy property cards now use same view-property-btn pattern as flagged properties
 # No separate table click handler needed - accordion cards have View buttons
 
-# Load analytics charts (depends on KPIs loading first)
-@app.callback(
-    [Output('trend-chart-container', 'children'),
-     Output('aspect-breakdown-chart', 'children'),
-     Output('regional-comparison-chart', 'children')],
-    Input('hq-executive-kpis', 'children'),
-    State('current-screen', 'data'),
-    prevent_initial_call=False
-)
-def load_analytics_charts(kpis_loaded, screen):
-    if screen != 'hq-properties':
-        return html.Div(), html.Div(), html.Div()
-    
-    try:
-        import plotly.graph_objects as go
-        
-        # Get data
-        trend_data = property_service.get_trend_data(days_back=30)
-        aspect_data = property_service.get_aspect_breakdown()
-        regional_data = property_service.get_regional_performance_summary()
-        
-        # Debug: Print what the chart is receiving
-        print(f"\n📊 Chart received regional_data:")
-        for region in regional_data[:10]:
-            print(f"  {region['region']}: Total={region['total']}, Flagged={region['flagged']}, Healthy={region['total']-region['flagged']}")
-        if len(regional_data) > 10:
-            print(f"  ... and {len(regional_data)-10} more regions")
-        
-        # Trend Chart
-        if trend_data:
-            trend_fig = go.Figure()
-            trend_fig.add_trace(go.Scatter(
-                x=[d['date'] for d in trend_data],
-                y=[d['issues_opened'] for d in trend_data],
-                mode='lines+markers',
-                name='Issues Opened',
-                line=dict(color='#dc3545', width=3),
-                marker=dict(size=6)
-            ))
-            trend_fig.update_layout(
-                title="Issue Trend (Last 30 Days)",
-                xaxis_title="Date",
-                yaxis_title="Issues Opened",
-                height=300,
-                margin=dict(l=40, r=40, t=40, b=40),
-                hovermode='x unified',
-                plot_bgcolor='#f8f9fa'
-            )
-            trend_chart = dcc.Graph(figure=trend_fig, config={'displayModeBar': False})
-        else:
-            trend_chart = dbc.Alert("No trend data available", color="info")
-        
-        # Aspect Breakdown Chart
-        if aspect_data:
-            aspect_fig = go.Figure()
-            aspect_fig.add_trace(go.Bar(
-                y=[d['aspect'] for d in aspect_data[:10]],  # Top 10
-                x=[d['count'] for d in aspect_data[:10]],
-                orientation='h',
-                marker=dict(
-                    color=[d['avg_negative'] for d in aspect_data[:10]],
-                    colorscale='YlOrRd',
-                    showscale=True,
-                    colorbar=dict(title="Avg %")
-                ),
-                text=[f"{d['count']} issues" for d in aspect_data[:10]],
-                textposition='auto',
-                hovertemplate='<b>%{y}</b><br>Count: %{x}<br>Avg Negative: %{marker.color:.1f}%<extra></extra>'
-            ))
-            aspect_fig.update_layout(
-                title="Top Issues by Aspect",
-                xaxis_title="Number of Issues",
-                yaxis_title="",
-                height=300,
-                margin=dict(l=150, r=40, t=40, b=40),
-                plot_bgcolor='#f8f9fa'
-            )
-            aspect_chart = dcc.Graph(figure=aspect_fig, config={'displayModeBar': False})
-        else:
-            aspect_chart = dbc.Alert("No aspect data available", color="info")
-        
-        # Regional Comparison Chart
-        if regional_data:
-            regional_fig = go.Figure()
-            # Healthy properties first (green, bottom of stack = good)
-            regional_fig.add_trace(go.Bar(
-                x=[d['region'] for d in regional_data[:15]],  # Top 15
-                y=[d['total'] - d['flagged'] for d in regional_data[:15]],
-                name='Healthy',
-                marker=dict(color='#198754'),
-                hovertemplate='<b>%{x}</b><br>Healthy: %{y}<extra></extra>'
-            ))
-            # Flagged properties on top (red = problems)
-            regional_fig.add_trace(go.Bar(
-                x=[d['region'] for d in regional_data[:15]],
-                y=[d['flagged'] for d in regional_data[:15]],
-                name='Flagged',
-                marker=dict(color='#dc3545'),
-                hovertemplate='<b>%{x}</b><br>Flagged: %{y}<extra></extra>'
-            ))
-            regional_fig.update_layout(
-                title="Regional Performance Comparison",
-                xaxis_title="Region",
-                yaxis_title="Number of Properties",
-                barmode='stack',
-                height=300,
-                margin=dict(l=40, r=40, t=40, b=80),
-                xaxis_tickangle=-45,
-                plot_bgcolor='#f8f9fa',
-                legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
-            )
-            regional_chart = dcc.Graph(figure=regional_fig, config={'displayModeBar': False})
-        else:
-            regional_chart = dbc.Alert("No regional data available", color="info")
-        
-        return trend_chart, aspect_chart, regional_chart
-        
-    except Exception as e:
-        print(f"❌ Error loading analytics charts: {str(e)}")
-        import traceback
-        traceback.print_exc()
-        error_msg = dbc.Alert(f"Error loading analytics: {str(e)}", color="danger")
-        return error_msg, error_msg, error_msg
+# NOTE: Analytics charts callback removed - replaced with embedded Databricks dashboard
+# The HQ Overview Dashboard (01f0b5d2c21513ac8ab86f43c6fd0dc3) is now embedded directly
+# in the HQ Properties page, replacing the previous trend/aspect/regional charts
+
+# OLD CALLBACK REMOVED (kept for reference):
+# @app.callback(
+#     [Output('trend-chart-container', 'children'),
+#      Output('aspect-breakdown-chart', 'children'),
+#      Output('regional-comparison-chart', 'children')],
+#     Input('hq-executive-kpis', 'children'),
+#     State('current-screen', 'data'),
+#     prevent_initial_call=False
+# )
+# def load_analytics_charts(kpis_loaded, screen):
+#     # Replaced with embedded Databricks dashboard
+#     pass
+
 
 # Handle property selection using pattern-matching
 @app.callback(
@@ -1741,8 +2083,8 @@ def load_property_details(property_id, screen):
         print(f"   🔄 Fetching property details for {property_id}...")
         details = property_service.get_property_details(property_id)
         if not details:
-            print(f"   ⚠️  Property not found!")
-            return dbc.Alert("Property not found.", color="warning")
+            print(f"   ⚠️  No Reviews Found For Property!")
+            return dbc.Alert("No Reviews Found For Property.", color="warning")
         print(f"   ✅ Property details loaded!")
         
         return dbc.Card([
@@ -1780,7 +2122,8 @@ def load_property_details(property_id, screen):
 @app.callback(
     Output('hq-aspect-analysis-table', 'children'),
     [Input('selected-property-id', 'data'),
-     Input('current-screen', 'data')]
+     Input('current-screen', 'data')],
+    prevent_initial_call=False
 )
 def load_aspect_analysis_table(property_id, screen):
     if screen != 'hq-dashboard' or not property_id:
@@ -1796,37 +2139,55 @@ def load_aspect_analysis_table(property_id, screen):
         for aspect in details['aspects']:
             aspects_data.append({
                 'Aspect': aspect['name'],
-                'Negative Reviews': f"{aspect['percentage']}%",
+                'Negative Reviews': f"{round(aspect['percentage']*100, 1)}%",
                 'Status': aspect['status'].upper()
             })
         
         if not aspects_data:
             return html.Div()
         
+        # Create HTML table rows
+        table_rows = []
+        for aspect_item in aspects_data:
+            status = aspect_item['Status']
+            if 'CRITICAL' in status:
+                row_style = {'backgroundColor': '#ffebee', 'color': custom_style['critical'], 'fontWeight': '500'}
+            elif 'WARNING' in status:
+                row_style = {'backgroundColor': '#fff9c4', 'color': custom_style['warning'], 'fontWeight': '500'}
+            else:
+                row_style = {}
+            
+            table_rows.append(
+                html.Tr([
+                    html.Td(aspect_item['Aspect'], style={'padding': '12px'}),
+                    html.Td(aspect_item['Negative Reviews'], style={'padding': '12px', 'textAlign': 'center'}),
+                    html.Td(dbc.Badge(status, color='danger' if 'CRITICAL' in status else 'warning' if 'WARNING' in status else 'success'), 
+                           style={'padding': '12px', 'textAlign': 'center'}),
+                ], style=row_style)
+            )
+        
         return dbc.Card([
             dbc.CardBody([
                 html.H4("📋 Aspect Analysis", className="mb-3", style={'fontWeight': '600'}),
-                html.P("Overview of all aspects and their performance", 
+                html.P([
+                    "Overview of all aspects and their performance. ",
+                    html.Strong("Negative Reviews %"), 
+                    " shows the overall negative sentiment rate for this aspect."
+                ], 
                       className="text-muted mb-3",
                       style={'fontSize': '0.95rem'}),
-                dash_table.DataTable(
-                    data=aspects_data,
-                    columns=[{'name': i, 'id': i} for i in aspects_data[0].keys()],
-                    style_cell={'textAlign': 'left', 'padding': '12px', 'fontSize': '0.95rem'},
-                    style_header={
-                        'backgroundColor': custom_style['primary'], 
-                        'color': 'white', 
-                        'fontWeight': 'bold',
-                        'fontSize': '1rem',
-                        'padding': '12px'
-                    },
-                    style_data_conditional=[
-                        {'if': {'filter_query': '{Status} contains "CRITICAL"'},
-                         'backgroundColor': '#ffebee', 'color': custom_style['critical'], 'fontWeight': '500'},
-                        {'if': {'filter_query': '{Status} contains "WARNING"'},
-                         'backgroundColor': '#fff9c4', 'color': custom_style['warning'], 'fontWeight': '500'},
-                    ],
-                )
+                dbc.Table([
+                    html.Thead(
+                        html.Tr([
+                            html.Th("Aspect", style={'padding': '12px', 'fontSize': '1rem'}),
+                            html.Th("Negative Reviews", style={'padding': '12px', 'fontSize': '1rem', 'textAlign': 'center'}),
+                            html.Th("Status", style={'padding': '12px', 'fontSize': '1rem', 'textAlign': 'center'}),
+                        ]),
+                        style={'backgroundColor': custom_style['primary'], 'color': 'white', 'fontWeight': 'bold'}
+                    ),
+                    html.Tbody(table_rows)
+                ], bordered=True, hover=True, responsive=True, striped=True,
+                   style={'fontSize': '0.95rem'})
             ], style={'padding': '1.5rem'})
         ], style={'border': 'none', 'borderRadius': '12px'})
     except Exception as e:
@@ -1847,25 +2208,18 @@ def load_filtered_dashboard(property_id, screen):
         # Get property details to extract location
         details = property_service.get_property_details(property_id)
         if not details:
-            return dbc.Alert("Property not found.", color="warning")
+            return dbc.Alert("No Reviews Found For Property.", color="warning")
         
         # Construct location string
         location = f"{details['city']}, {details['state']}"
         
-        # Base dashboard URL - using published URL format for iframe embedding
-        # Reference: https://fe-vm-voc-lakehouse-inn-workspace.cloud.databricks.com/dashboardsv3/01f0ab936a8815ffbc5b0dd3d8ca0f9f/published/pages/a7cbab78
-        base_url = "https://fe-vm-voc-lakehouse-inn-workspace.cloud.databricks.com/dashboardsv3/01f0ab936a8815ffbc5b0dd3d8ca0f9f/published/pages/a7cbab78"
+        # Original Property Dashboard URL (keep this one for property details)
+        base_url = "https://fe-vm-voc-lakehouse-inn-workspace.cloud.databricks.com/embed/dashboardsv3/01f0ab936a8815ffbc5b0dd3d8ca0f9f"
         
         # Add location filter parameter
-        # URL encode the location string (double encoding needed for Databricks filters)
         from urllib.parse import quote
-        # Double encode to match Databricks expected format
         encoded_location = quote(quote(location, safe=''), safe='')
-        
-        # Add filter parameters to the URL
-        # The format for Databricks dashboard filters is: ?o=<workspace_id>&f_<page_id>~<filter_id>=<value>
-        # filtered_url = f"{base_url}?o=604717363374831&f_a7cbab78~57a7e64b={encoded_location}"
-        filtered_url=f"https://fe-vm-voc-lakehouse-inn-workspace.cloud.databricks.com/embed/dashboardsv3/01f0ab936a8815ffbc5b0dd3d8ca0f9f?o=604717363374831&f_cda77b68%7E7b3b0339={encoded_location}&f_a7cbab78%7E27ece451=2025-06-30T00%253A00%253A00.000%7E2025-09-01T23%253A59%253A59.999&f_a7cbab78%7E1179387e=_all_"
+        filtered_url = f"{base_url}?o=604717363374831&f_property_rating%7E57a7e64b={encoded_location}"
 
         print(f"🗺️ Loading dashboard filtered for location: {location}")
         print(f"📊 Dashboard URL: {filtered_url}")
@@ -1937,15 +2291,27 @@ def load_reviews_deep_dive(selected_aspect, property_id, screen):
         return html.Div()
     
     try:
+        # Get property details to fetch correct status (consistent with table)
+        details = property_service.get_property_details(property_id)
+        
+        # Get deep dive data
         deep_dive_data = property_service.get_reviews_deep_dive(property_id, selected_aspect)
         deep_dive = deep_dive_data.get('deep_dive')
         
         if not deep_dive:
             return dbc.Alert("No data available for this aspect.", color="info")
         
-        # Create severity badge color
-        severity = deep_dive['severity'].lower()
-        severity_color = 'danger' if severity == 'critical' else ('warning' if severity == 'warning' else 'success')
+        # Find the correct status from property details for this aspect (same as table)
+        correct_status = None
+        if details and 'aspects' in details:
+            for aspect_info in details['aspects']:
+                if aspect_info['name'] == selected_aspect:
+                    correct_status = aspect_info['status']
+                    break
+        
+        # Use correct_status from table instead of deep_dive['severity']
+        severity = correct_status if correct_status else deep_dive['severity']
+        severity_color = 'danger' if severity.lower() == 'critical' else ('warning' if severity.lower() == 'warning' else 'success')
         
         return dbc.Card([
             dbc.CardBody([
@@ -1954,7 +2320,7 @@ def load_reviews_deep_dive(selected_aspect, property_id, screen):
                     dbc.Col([
                         html.H5(deep_dive['aspect'], className="mb-2", style={'fontWeight': '600'}),
                         dbc.Badge(
-                            deep_dive['severity'], 
+                            severity, 
                             color=severity_color, 
                             className="me-2",
                             style={'fontSize': '0.875rem'}
@@ -2001,7 +2367,7 @@ def load_reviews_deep_dive(selected_aspect, property_id, screen):
                                     html.H3(deep_dive['negative_count'], 
                                            className="mb-1",
                                            style={'fontWeight': '700', 'color': '#dc3545'}),
-                                    html.P("Negative Reviews", className="mb-0 text-muted", style={'fontSize': '0.9rem'}),
+                                    html.P("Negative Reviews (in last 21 days)", className="mb-0 text-muted", style={'fontSize': '0.9rem'}),
                                 ], className="text-center")
                             ], style={'padding': '1rem'})
                         ], style={'border': '2px solid #dc3545', 'borderRadius': '8px', 'backgroundColor': '#fff5f5'}),
@@ -2013,7 +2379,7 @@ def load_reviews_deep_dive(selected_aspect, property_id, screen):
                                     html.H3(deep_dive['positive_count'], 
                                            className="mb-1",
                                            style={'fontWeight': '700', 'color': '#28a745'}),
-                                    html.P("Positive Reviews", className="mb-0 text-muted", style={'fontSize': '0.9rem'}),
+                                    html.P("Positive Reviews (in last 21 days)", className="mb-0 text-muted", style={'fontSize': '0.9rem'}),
                                 ], className="text-center")
                             ], style={'padding': '1rem'})
                         ], style={'border': '2px solid #28a745', 'borderRadius': '8px', 'backgroundColor': '#f1f9f3'}),
@@ -2047,397 +2413,904 @@ def load_reviews_deep_dive(selected_aspect, property_id, screen):
                     ),
                 ]),
                 
-                html.Hr(className="my-4"),
-                
-                # Individual Reviews Browser
-                html.Div([
-                    html.Div([
-                        html.H6("📝 Individual Reviews", className="mb-3", style={'fontWeight': '600'}),
-                        dbc.Row([
-                            dbc.Col([
-                                html.Label("Timeframe:", style={'fontWeight': '500', 'marginBottom': '0.5rem'}),
-                                dcc.Dropdown(
-                                    id='hq-review-timeframe-selector',
-                                    options=[
-                                        {'label': 'Last 7 days', 'value': 7},
-                                        {'label': 'Last 14 days', 'value': 14},
-                                        {'label': 'Last 30 days', 'value': 30}
-                                    ],
-                                    value=14,  # Default to 14 days
-                                    clearable=False,
-                                    style={'width': '100%'}
-                                ),
-                            ], md=3),
-                        ], className="mb-3"),
-                    ]),
-                    html.Div(id='hq-individual-reviews-list')
-                ], style={'padding': '1.5rem', 'backgroundColor': '#f8f9fa', 'borderRadius': '8px'}),
-                
             ], style={'padding': '1.5rem'})
         ], style={'border': 'none', 'borderRadius': '12px'})
         
     except Exception as e:
         return dbc.Alert(f"Error loading deep dive: {str(e)}", color="danger")
 
-# Genie query handler (HQ)
+# Load Individual Reviews Browser Controls (separate from deep dive content)
 @app.callback(
-    Output('hq-genie-results-container', 'children'),
-    [Input('btn-ask-genie-hq', 'n_clicks')],
-    [State('hq-genie-input', 'value')],
-    prevent_initial_call=True
-)
-def ask_genie_hq(n_clicks, query):
-    if not n_clicks or not query:
-        return html.Div()
-    
-    try:
-        result = genie_service.continue_conversation(query)
-        
-        if 'error' in result:
-            return dbc.Alert(f"Error: {result['error']}", color="danger")
-        
-        if not result.get('results'):
-            return dbc.Alert("No results found.", color="info")
-        
-        output = [
-            dbc.Card([
-                dbc.CardHeader([
-                    html.I(className="bi bi-chat-dots me-2"),
-                    html.Strong("Your Question:", style={'fontSize': '0.95rem'}),
-                ], style={'backgroundColor': '#f8f9fa'}),
-                dbc.CardBody([
-                    html.P(query, style={'fontSize': '1rem', 'color': '#495057', 'marginBottom': '0'})
-                ])
-            ], className="mb-3")
-        ]
-        
-        response_count = 0
-        for idx, item in enumerate(result['results']):
-            if item['type'] == 'text':
-                response_count += 1
-                output.append(
-                    dbc.Card([
-                        dbc.CardHeader([
-                            html.I(className="bi bi-robot me-2", style={'color': '#0d6efd'}),
-                            html.Strong(f"Genie Response {response_count}:", style={'fontSize': '0.95rem'}),
-                        ], style={'backgroundColor': '#e7f1ff'}),
-                        dbc.CardBody([
-                            html.P(item['content'], style={'fontSize': '1rem', 'lineHeight': '1.6', 'marginBottom': '0'})
-                        ])
-                    ], className="mb-3", style={'border': '1px solid #0d6efd'})
-                )
-            
-            elif item['type'] == 'table':
-                # Create collapsible SQL query section
-                query_text = item.get('query', 'No query available')
-                description = item.get('description', 'Query Results')
-                
-                output.append(
-                    dbc.Card([
-                        dbc.CardHeader([
-                            html.I(className="bi bi-table me-2", style={'color': '#198754'}),
-                            html.Strong(description, style={'fontSize': '1rem'}),
-                        ], style={'backgroundColor': '#d1e7dd'}),
-                        dbc.CardBody([
-                            # SQL Query Accordion
-                            dbc.Accordion([
-                                dbc.AccordionItem([
-                                    html.Pre(
-                                        query_text,
-                                        style={
-                                            'backgroundColor': '#2d2d2d',
-                                            'color': '#f8f8f2',
-                                            'padding': '1rem',
-                                            'borderRadius': '8px',
-                                            'fontSize': '0.875rem',
-                                            'overflowX': 'auto',
-                                            'marginBottom': '0',
-                                            'fontFamily': 'Monaco, Consolas, monospace'
-                                        }
-                                    )
-                                ], title="📝 View Generated SQL", item_id=f"sql-{idx}")
-                            ], start_collapsed=True, className="mb-3"),
-                            
-                            # Data Table
-                            html.Div([
-                                html.Strong(f"📊 Results: {len(item.get('data', []))} rows", 
-                                          style={'fontSize': '0.9rem', 'color': '#495057', 'marginBottom': '0.5rem', 'display': 'block'}),
-                                dash_table.DataTable(
-                                    data=item.get('data', []),
-                                    columns=[{'name': col, 'id': col} for col in item.get('columns', [])],
-                                    style_cell={
-                                        'textAlign': 'left',
-                                        'padding': '12px',
-                                        'fontSize': '0.9rem',
-                                        'fontFamily': 'inherit'
-                                    },
-                                    style_header={
-                                        'backgroundColor': '#198754',
-                                        'color': 'white',
-                                        'fontWeight': 'bold',
-                                        'border': '1px solid #198754'
-                                    },
-                                    style_data={
-                                        'border': '1px solid #dee2e6'
-                                    },
-                                    style_data_conditional=[
-                                        {
-                                            'if': {'row_index': 'odd'},
-                                            'backgroundColor': '#f8f9fa'
-                                        }
-                                    ],
-                                    page_size=10,
-                                ) if item.get('data') else html.P("No data returned", className="text-muted")
-                            ])
-                        ])
-                    ], className="mb-3", style={'border': '1px solid #198754'})
-                )
-            
-            elif item['type'] == 'query':
-                # Query without data
-                output.append(
-                    dbc.Card([
-                        dbc.CardHeader([
-                            html.I(className="bi bi-code-square me-2", style={'color': '#6c757d'}),
-                            html.Strong(item.get('description', 'Generated Query'), style={'fontSize': '1rem'}),
-                        ], style={'backgroundColor': '#e2e3e5'}),
-                        dbc.CardBody([
-                            html.Pre(
-                                item.get('query', 'No query available'),
-                                style={
-                                    'backgroundColor': '#2d2d2d',
-                                    'color': '#f8f8f2',
-                                    'padding': '1rem',
-                                    'borderRadius': '8px',
-                                    'fontSize': '0.875rem',
-                                    'overflowX': 'auto',
-                                    'marginBottom': '0',
-                                    'fontFamily': 'Monaco, Consolas, monospace'
-                                }
-                            )
-                        ])
-                    ], className="mb-3")
-                )
-        
-        return output
-    except Exception as e:
-        import traceback
-        traceback.print_exc()
-        return dbc.Alert(f"Failed to query Genie: {str(e)}", color="danger")
-
-# Genie query handler (PM)
-@app.callback(
-    Output('pm-genie-results', 'children'),
-    [Input('btn-ask-genie-pm', 'n_clicks')],
-    [State('pm-genie-input', 'value')],
-    prevent_initial_call=True
-)
-def ask_genie_pm(n_clicks, query):
-    if not n_clicks or not query:
-        return html.Div()
-    
-    try:
-        result = genie_service.continue_conversation(query)
-        
-        if 'error' in result:
-            return dbc.Alert(f"Error: {result['error']}", color="danger")
-        
-        if not result.get('results'):
-            return dbc.Alert("No results found.", color="info")
-        
-        output = [
-            dbc.Card([
-                dbc.CardHeader([
-                    html.I(className="bi bi-chat-dots me-2"),
-                    html.Strong("Your Question:", style={'fontSize': '0.95rem'}),
-                ], style={'backgroundColor': '#f8f9fa'}),
-                dbc.CardBody([
-                    html.P(query, style={'fontSize': '1rem', 'color': '#495057', 'marginBottom': '0'})
-                ])
-            ], className="mb-3")
-        ]
-        
-        response_count = 0
-        for idx, item in enumerate(result['results']):
-            if item['type'] == 'text':
-                response_count += 1
-                output.append(
-                    dbc.Card([
-                        dbc.CardHeader([
-                            html.I(className="bi bi-robot me-2", style={'color': '#0d6efd'}),
-                            html.Strong(f"Genie Response {response_count}:", style={'fontSize': '0.95rem'}),
-                        ], style={'backgroundColor': '#e7f1ff'}),
-                        dbc.CardBody([
-                            html.P(item['content'], style={'fontSize': '1rem', 'lineHeight': '1.6', 'marginBottom': '0'})
-                        ])
-                    ], className="mb-3", style={'border': '1px solid #0d6efd'})
-                )
-            
-            elif item['type'] == 'table':
-                query_text = item.get('query', 'No query available')
-                description = item.get('description', 'Query Results')
-                
-                output.append(
-                    dbc.Card([
-                        dbc.CardHeader([
-                            html.I(className="bi bi-table me-2", style={'color': '#198754'}),
-                            html.Strong(description, style={'fontSize': '1rem'}),
-                        ], style={'backgroundColor': '#d1e7dd'}),
-                        dbc.CardBody([
-                            dbc.Accordion([
-                                dbc.AccordionItem([
-                                    html.Pre(
-                                        query_text,
-                                        style={
-                                            'backgroundColor': '#2d2d2d',
-                                            'color': '#f8f8f2',
-                                            'padding': '1rem',
-                                            'borderRadius': '8px',
-                                            'fontSize': '0.875rem',
-                                            'overflowX': 'auto',
-                                            'marginBottom': '0',
-                                            'fontFamily': 'Monaco, Consolas, monospace'
-                                        }
-                                    )
-                                ], title="📝 View Generated SQL", item_id=f"pm-sql-{idx}")
-                            ], start_collapsed=True, className="mb-3"),
-                            
-                            html.Div([
-                                html.Strong(f"📊 Results: {len(item.get('data', []))} rows", 
-                                          style={'fontSize': '0.9rem', 'color': '#495057', 'marginBottom': '0.5rem', 'display': 'block'}),
-                                dash_table.DataTable(
-                                    data=item.get('data', []),
-                                    columns=[{'name': col, 'id': col} for col in item.get('columns', [])],
-                                    style_cell={
-                                        'textAlign': 'left',
-                                        'padding': '12px',
-                                        'fontSize': '0.9rem',
-                                        'fontFamily': 'inherit'
-                                    },
-                                    style_header={
-                                        'backgroundColor': '#198754',
-                                        'color': 'white',
-                                        'fontWeight': 'bold',
-                                        'border': '1px solid #198754'
-                                    },
-                                    style_data={
-                                        'border': '1px solid #dee2e6'
-                                    },
-                                    style_data_conditional=[
-                                        {
-                                            'if': {'row_index': 'odd'},
-                                            'backgroundColor': '#f8f9fa'
-                                        }
-                                    ],
-                                    page_size=10,
-                                ) if item.get('data') else html.P("No data returned", className="text-muted")
-                            ])
-                        ])
-                    ], className="mb-3", style={'border': '1px solid #198754'})
-                )
-            
-            elif item['type'] == 'query':
-                output.append(
-                    dbc.Card([
-                        dbc.CardHeader([
-                            html.I(className="bi bi-code-square me-2", style={'color': '#6c757d'}),
-                            html.Strong(item.get('description', 'Generated Query'), style={'fontSize': '1rem'}),
-                        ], style={'backgroundColor': '#e2e3e5'}),
-                        dbc.CardBody([
-                            html.Pre(
-                                item.get('query', 'No query available'),
-                                style={
-                                    'backgroundColor': '#2d2d2d',
-                                    'color': '#f8f8f2',
-                                    'padding': '1rem',
-                                    'borderRadius': '8px',
-                                    'fontSize': '0.875rem',
-                                    'overflowX': 'auto',
-                                    'marginBottom': '0',
-                                    'fontFamily': 'Monaco, Consolas, monospace'
-                                }
-                            )
-                        ])
-                    ], className="mb-3")
-                )
-        
-        return output
-    except Exception as e:
-        import traceback
-        traceback.print_exc()
-        return dbc.Alert(f"Failed to query Genie: {str(e)}", color="danger")
-
-# Load PM property dropdown
-@app.callback(
-    Output('pm-property-select', 'options'),
-    Input('current-screen', 'data'),
+    Output('hq-review-browser-controls', 'children'),
+    [Input('hq-aspect-selector', 'value'),
+     Input('selected-property-id', 'data'),
+     Input('current-screen', 'data')],
     prevent_initial_call=False
 )
-def load_pm_properties(screen):
-    if screen != 'pm-dashboard':
+def load_hq_review_browser_controls(selected_aspect, property_id, screen):
+    """Render the review browser controls (timeframe dropdown and filter buttons)"""
+    if screen != 'hq-dashboard' or not property_id or not selected_aspect:
+        return html.Div()
+    
+    return dbc.Card([
+        dbc.CardBody([
+            html.H6("📝 Individual Reviews", className="mb-3", style={'fontWeight': '600'}),
+            dbc.Row([
+                dbc.Col([
+                    html.Label("Timeframe:", style={'fontWeight': '500', 'marginBottom': '0.5rem'}),
+                    dcc.Dropdown(
+                        id='hq-review-timeframe-selector',
+                        options=[
+                            {'label': 'Last 7 days', 'value': 7},
+                            {'label': 'Last 14 days', 'value': 14},
+                            {'label': 'Last 30 days', 'value': 30}
+                        ],
+                        value=14,  # Default to 14 days
+                        clearable=False,
+                        style={'width': '100%'},
+                        optionHeight=35
+                    ),
+                ], md=3),
+                dbc.Col([
+                    html.Label("Show Reviews:", style={'fontWeight': '500', 'marginBottom': '0.5rem'}),
+                    dbc.RadioItems(
+                        id='hq-review-filter',
+                        options=[
+                            {'label': 'All Reviews', 'value': 'all'},
+                            {'label': 'Negative Only', 'value': 'negative'},
+                            {'label': 'Positive Only', 'value': 'positive'}
+                        ],
+                        value='all',  # Default to show all
+                        inline=True,
+                        style={'marginTop': '0.25rem'}
+                    ),
+                ], md=6),
+            ], className="mb-3"),
+        ], style={'padding': '1.5rem'})
+    ], style={'border': 'none', 'borderRadius': '12px', 'backgroundColor': '#f8f9fa'})
+
+# Helper function to render Genie messages
+def render_genie_message(message, is_user=False):
+    """Render a single message in chat-like UI"""
+    if is_user:
+        return html.Div([
+            html.Div([
+                html.Div([
+                    html.I(className="bi bi-person-circle", style={'fontSize': '1.5rem', 'marginRight': '0.75rem'}),
+                    html.Div([
+                        html.Strong("You", style={'fontSize': '0.85rem', 'color': '#6c757d', 'display': 'block', 'marginBottom': '0.25rem'}),
+                        html.P(message.get('query', ''), style={'margin': '0', 'fontSize': '0.95rem'})
+                    ])
+                ], style={'display': 'flex', 'alignItems': 'start'})
+            ], style={
+                'backgroundColor': '#e7f1ff',
+                'padding': '1rem',
+                'borderRadius': '12px',
+                'marginBottom': '0.75rem',
+                'border': '1px solid #b6d7ff'
+            })
+        ], style={'marginBottom': '1rem'})
+    
+    else:
+        # Genie response
+        components = []
+        
+        # Check if there's an error
+        if message.get('error'):
+            components.append(
+                html.Div([
+                    html.I(className="bi bi-exclamation-triangle-fill me-2", style={'color': '#dc3545'}),
+                    html.Span(f"Error: {message['error']}", style={'fontSize': '0.95rem'})
+                ], style={'color': '#dc3545', 'padding': '0.5rem', 'backgroundColor': '#f8d7da', 'borderRadius': '6px', 'border': '1px solid #f5c2c7'})
+            )
+        
+        for idx, item in enumerate(message.get('results', [])):
+            if item['type'] == 'text':
+                components.append(
+                    html.P(item['content'], style={'margin': '0 0 0.5rem 0', 'fontSize': '0.95rem', 'lineHeight': '1.6'})
+                )
+            
+            elif item['type'] == 'table':
+                query_text = item.get('query', 'No query available')
+                description = item.get('description', 'Query Results')
+                
+                components.append(
+                    html.Div([
+                        html.Div([
+                            html.I(className="bi bi-table me-2", style={'color': '#198754'}),
+                            html.Strong(description, style={'fontSize': '0.95rem'}),
+                        ], style={'marginBottom': '0.5rem'}),
+                        
+                        dbc.Accordion([
+                            dbc.AccordionItem([
+                                html.Pre(
+                                    query_text,
+                                    style={
+                                        'backgroundColor': '#2d2d2d',
+                                        'color': '#f8f8f2',
+                                        'padding': '0.75rem',
+                                        'borderRadius': '6px',
+                                        'fontSize': '0.8rem',
+                                        'overflowX': 'auto',
+                                        'marginBottom': '0',
+                                        'fontFamily': 'Monaco, Consolas, monospace'
+                                    }
+                                )
+                            ], title="📝 SQL", item_id=f"msg-sql-{idx}")
+                        ], start_collapsed=True, className="mb-2", style={'fontSize': '0.85rem'}),
+                        
+                        (lambda data, cols: 
+                            html.Div([
+                                html.Small(f"{len(data)} rows", style={'color': '#6c757d', 'display': 'block', 'marginBottom': '0.5rem'}),
+                                (lambda:
+                                    # Try to infer columns from first row if not provided
+                                    (lambda inferred_cols:
+                                        dash_table.DataTable(
+                                            data=data,
+                                            columns=[{'name': col, 'id': col} for col in inferred_cols],
+                                            style_cell={
+                                                'textAlign': 'left',
+                                                'padding': '8px',
+                                                'fontSize': '0.85rem',
+                                                'fontFamily': 'inherit'
+                                            },
+                                            style_header={
+                                                'backgroundColor': '#198754',
+                                                'color': 'white',
+                                                'fontWeight': 'bold',
+                                                'fontSize': '0.85rem'
+                                            },
+                                            style_data={
+                                                'border': '1px solid #dee2e6'
+                                            },
+                                            style_data_conditional=[
+                                                {
+                                                    'if': {'row_index': 'odd'},
+                                                    'backgroundColor': '#f8f9fa'
+                                                }
+                                            ],
+                                            page_size=5,
+                                        ) if inferred_cols else (
+                                            # If no proper table structure, show raw data
+                                            html.Div([
+                                                html.Strong("Result: ", style={'fontSize': '0.85rem', 'color': '#198754'}),
+                                                html.Span(str(data[0]) if data and len(data) > 0 else "No data", style={'fontSize': '0.85rem', 'fontFamily': 'monospace'})
+                                            ], style={'padding': '0.75rem', 'backgroundColor': '#f8f9fa', 'borderRadius': '6px', 'border': '1px solid #dee2e6'})
+                                        )
+                                    )(cols if cols else (list(data[0].keys()) if data and len(data) > 0 and isinstance(data[0], dict) and data[0] else []))
+                                )()
+                            ])
+                        )(item.get('data', []), item.get('columns', []))
+                    ], style={'marginBottom': '1rem', 'padding': '0.75rem', 'backgroundColor': '#f8f9fa', 'borderRadius': '8px', 'border': '1px solid #dee2e6'})
+                )
+            
+            elif item['type'] == 'query':
+                query_text = item.get('query', 'No query available')
+                description = item.get('description', 'Generated Query')
+                components.append(
+                    html.Div([
+                        html.Small(description, style={'color': '#6c757d', 'display': 'block', 'marginBottom': '0.25rem'}),
+                        html.Pre(
+                            query_text,
+                            style={
+                                'backgroundColor': '#2d2d2d',
+                                'color': '#f8f8f2',
+                                'padding': '0.75rem',
+                                'borderRadius': '6px',
+                                'fontSize': '0.8rem',
+                                'overflowX': 'auto',
+                                'marginBottom': '0',
+                                'fontFamily': 'Monaco, Consolas, monospace'
+                            }
+                        )
+                    ], style={'marginBottom': '1rem'})
+                )
+        
+        return html.Div([
+            html.Div([
+                html.Div([
+                    html.I(className="bi bi-robot", style={'fontSize': '1.5rem', 'marginRight': '0.75rem', 'color': '#198754'}),
+                    html.Div([
+                        html.Strong("Genie", style={'fontSize': '0.85rem', 'color': '#6c757d', 'display': 'block', 'marginBottom': '0.5rem'}),
+                        html.Div(components)
+                    ], style={'flex': '1'})
+                ], style={'display': 'flex', 'alignItems': 'start'})
+            ], style={
+                'backgroundColor': '#d1e7dd',
+                'padding': '1rem',
+                'borderRadius': '12px',
+                'marginBottom': '0.75rem',
+                'border': '1px solid #a3cfbb'
+            })
+        ], style={'marginBottom': '1rem'})
+
+
+# Clear conversation (HQ)
+@app.callback(
+    [Output('hq-genie-conversation-history', 'data'),
+     Output('hq-genie-input', 'value')],
+    [Input('btn-clear-genie-hq', 'n_clicks')],
+    prevent_initial_call=True
+)
+def clear_genie_conversation_hq(n_clicks):
+    genie_service.reset_conversation()
+    return [], ""
+
+
+# Display conversation history (HQ)
+@app.callback(
+    Output('hq-genie-conversation-display', 'children'),
+    [Input('hq-genie-conversation-history', 'data')],
+    [State('current-persona', 'data'),
+     State('selected-property-id', 'data')],
+    prevent_initial_call=False
+)
+def display_conversation_hq(history, persona, hq_property):
+    if not history:
+        # Set auth context for suggested questions
+        role = 'hq'
+        property_val = hq_property if hq_property else None
+        try:
+            genie_service.set_auth_context(role=role, property=property_val)
+        except:
+            pass  # Don't fail on context setup
+        
+        # Show suggested questions when empty
+        try:
+            suggested = genie_service.get_suggested_questions()
+        except:
+            suggested = [
+                "How many issues are there?",
+                "What are the top 5 aspects with the most issues?",
+                "Show me issues by location"
+            ]
+        
+        return html.Div([
+            html.Div([
+                html.I(className="bi bi-chat-text", style={
+                    'fontSize': '3rem', 
+                    'color': '#198754', 
+                    'display': 'block', 
+                    'textAlign': 'center', 
+                    'marginBottom': '0.75rem'
+                }),
+                html.H5("Start a conversation with Genie", style={
+                    'textAlign': 'center', 
+                    'color': '#495057', 
+                    'fontSize': '1.1rem',
+                    'fontWeight': '500',
+                    'margin': '0 0 1.5rem 0'
+                }),
+            ], style={'marginBottom': '2rem'}),
+            
+            html.Div([
+                html.Div("💡 Try asking:", style={
+                    'fontSize': '0.9rem', 
+                    'fontWeight': '600', 
+                    'color': '#495057', 
+                    'marginBottom': '1rem', 
+                    'textAlign': 'center'
+                }),
+                html.Div([
+                    dbc.Button(
+                        [html.I(className="bi bi-chat-square-text me-2"), q],
+                        id={'type': 'hq-suggested-question', 'index': i},
+                        color="primary",
+                        size="sm",
+                        outline=True,
+                        className="me-2 mb-2",
+                        style={
+                            'borderRadius': '8px',
+                            'fontSize': '0.9rem',
+                            'padding': '0.6rem 1rem',
+                            'borderWidth': '2px',
+                            'fontWeight': '500',
+                            'boxShadow': '0 2px 4px rgba(0,0,0,0.05)',
+                            'transition': 'all 0.2s'
+                        }
+                    ) for i, q in enumerate(suggested)
+                ], style={
+                    'display': 'flex',
+                    'flexWrap': 'wrap',
+                    'justifyContent': 'center',
+                    'gap': '0.5rem'
+                })
+            ], style={
+                'backgroundColor': '#f8f9fa',
+                'padding': '1.5rem',
+                'borderRadius': '12px',
+                'border': '1px solid #e9ecef'
+            })
+        ], style={'padding': '1rem 0'})
+    
+    messages = []
+    for idx, msg in enumerate(history):
+        if msg.get('type') == 'user':
+            messages.append(render_genie_message(msg, is_user=True))
+        else:
+            messages.append(render_genie_message(msg, is_user=False))
+            # Add follow-up questions after Genie responses
+            if msg.get('follow_up_questions'):
+                messages.append(
+                    html.Div([
+                        html.Div("💬 Follow-up:", style={
+                            'fontSize': '0.85rem',
+                            'fontWeight': '600',
+                            'color': '#198754',
+                            'marginBottom': '0.75rem'
+                        }),
+                        html.Div([
+                            dbc.Button(
+                                [html.I(className="bi bi-arrow-return-right me-2"), q],
+                                id={'type': 'hq-followup-question', 'index': f"{idx}-{i}"},
+                                color="success",
+                                size="sm",
+                                outline=True,
+                                className="me-2 mb-2",
+                                style={
+                                    'borderRadius': '8px',
+                                    'fontSize': '0.85rem',
+                                    'padding': '0.5rem 0.9rem',
+                                    'borderWidth': '2px',
+                                    'fontWeight': '500',
+                                    'boxShadow': '0 2px 4px rgba(0,0,0,0.05)'
+                                }
+                            ) for i, q in enumerate(msg['follow_up_questions'])
+                        ], style={'display': 'flex', 'flexWrap': 'wrap', 'gap': '0.5rem'})
+                    ], style={
+                        'marginBottom': '1.5rem',
+                        'paddingLeft': '2.5rem',
+                        'paddingRight': '1rem'
+                    })
+                )
+    
+    return html.Div(messages)
+
+
+# Handle suggested/follow-up question clicks (HQ)
+@app.callback(
+    Output('hq-genie-input', 'value', allow_duplicate=True),
+    [Input({'type': 'hq-suggested-question', 'index': dash.dependencies.ALL}, 'n_clicks'),
+     Input({'type': 'hq-followup-question', 'index': dash.dependencies.ALL}, 'n_clicks')],
+    [State({'type': 'hq-suggested-question', 'index': dash.dependencies.ALL}, 'children'),
+     State({'type': 'hq-followup-question', 'index': dash.dependencies.ALL}, 'children')],
+    prevent_initial_call=True
+)
+def populate_question_hq(suggested_clicks, followup_clicks, suggested_texts, followup_texts):
+    ctx = dash.callback_context
+    if not ctx.triggered:
         return dash.no_update
     
-    try:
-        properties = property_service.get_all_properties()
-        options = [{'label': f"{p['name']} ({p['city']}, {p['state']})", 'value': p['property_id']} 
-                   for p in properties]
-        print(f"✅ Loaded {len(options)} properties for PM dropdown")
-        return options
-    except Exception as e:
-        print(f"⚠️  Error loading PM properties: {str(e)}")
-        return dash.no_update
+    # Helper function to extract text from button children
+    def extract_text(children):
+        if isinstance(children, str):
+            return children
+        elif isinstance(children, list):
+            # Button children is [Icon, Text], get the text (last element)
+            return children[-1] if children else ""
+        return str(children)
+    
+    # Find which button was clicked
+    triggered_id = ctx.triggered[0]['prop_id']
+    
+    if 'hq-suggested-question' in triggered_id:
+        # Find index of clicked suggested question
+        for i, clicks in enumerate(suggested_clicks):
+            if clicks and clicks > 0:
+                return extract_text(suggested_texts[i])
+    elif 'hq-followup-question' in triggered_id:
+        # Find index of clicked follow-up question
+        for i, clicks in enumerate(followup_clicks):
+            if clicks and clicks > 0:
+                return extract_text(followup_texts[i])
+    
+    return dash.no_update
 
-# Load PM property details
+
+# Genie query handler (HQ) - Now with conversation history
 @app.callback(
-    Output('pm-property-details', 'children'),
-    Input('pm-property-select', 'value')
+    [Output('hq-genie-conversation-history', 'data', allow_duplicate=True),
+     Output('hq-genie-results-container', 'children'),
+     Output('hq-genie-input', 'value', allow_duplicate=True)],
+    [Input('btn-ask-genie-hq', 'n_clicks')],
+    [State('hq-genie-input', 'value'),
+     State('hq-genie-conversation-history', 'data'),
+     State('current-persona', 'data'),
+     State('selected-property-id', 'data')],
+    prevent_initial_call=True
+)
+def ask_genie_hq(n_clicks, query, history, persona, hq_property):
+    if not n_clicks or not query:
+        return dash.no_update, html.Div(), dash.no_update
+    
+    # Set Genie auth context
+    role = 'hq'
+    property_val = hq_property if hq_property else None
+    genie_service.set_auth_context(role=role, property=property_val)
+    
+    try:
+        result = genie_service.continue_conversation(query)
+        
+        if 'error' in result:
+            # Still show error in history
+            new_history = history + [
+                {'type': 'user', 'query': query},
+                {'type': 'genie', 'error': result['error'], 'results': []}
+            ]
+            return new_history, html.Div(), ""
+        
+        if not result.get('results'):
+            new_history = history + [
+                {'type': 'user', 'query': query},
+                {'type': 'genie', 'results': [{'type': 'text', 'content': 'No results found.'}]}
+            ]
+            return new_history, html.Div(), ""
+        
+        # Append user query and Genie response to history
+        new_history = history + [
+            {'type': 'user', 'query': query},
+            {'type': 'genie', **result}
+        ]
+        
+        # Clear input and return updated history
+        return new_history, html.Div(), ""
+        
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        error_history = history + [
+            {'type': 'user', 'query': query},
+            {'type': 'genie', 'error': str(e), 'results': []}
+        ]
+        return error_history, html.Div(), ""
+
+# Clear conversation (PM)
+@app.callback(
+    [Output('pm-genie-conversation-history', 'data'),
+     Output('pm-genie-input', 'value')],
+    [Input('btn-clear-genie-pm', 'n_clicks')],
+    prevent_initial_call=True
+)
+def clear_genie_conversation_pm(n_clicks):
+    genie_service.reset_conversation()
+    return [], ""
+
+
+# Display conversation history (PM)
+@app.callback(
+    Output('pm-genie-conversation-display', 'children'),
+    [Input('pm-genie-conversation-history', 'data')],
+    [State('current-persona', 'data'),
+     State('pm-selected-property-store', 'data')],
+    prevent_initial_call=False
+)
+def display_conversation_pm(history, persona, pm_property):
+    if not history:
+        # Set auth context for suggested questions
+        role = 'pm'
+        property_val = pm_property if pm_property else None
+        try:
+            genie_service.set_auth_context(role=role, property=property_val)
+        except:
+            pass  # Don't fail on context setup
+        
+        # Show suggested questions when empty
+        try:
+            suggested = genie_service.get_suggested_questions()
+        except:
+            suggested = [
+                "How many issues are there?",
+                "What are the top 5 aspects with the most issues?",
+                "Show me issues by location"
+            ]
+        
+        return html.Div([
+            html.Div([
+                html.I(className="bi bi-chat-text", style={
+                    'fontSize': '3rem', 
+                    'color': '#198754', 
+                    'display': 'block', 
+                    'textAlign': 'center', 
+                    'marginBottom': '0.75rem'
+                }),
+                html.H5("Start a conversation with Genie", style={
+                    'textAlign': 'center', 
+                    'color': '#495057', 
+                    'fontSize': '1.1rem',
+                    'fontWeight': '500',
+                    'margin': '0 0 1.5rem 0'
+                }),
+            ], style={'marginBottom': '2rem'}),
+            
+            html.Div([
+                html.Div("💡 Try asking:", style={
+                    'fontSize': '0.9rem', 
+                    'fontWeight': '600', 
+                    'color': '#495057', 
+                    'marginBottom': '1rem', 
+                    'textAlign': 'center'
+                }),
+                html.Div([
+                    dbc.Button(
+                        [html.I(className="bi bi-chat-square-text me-2"), q],
+                        id={'type': 'pm-suggested-question', 'index': i},
+                        color="primary",
+                        size="sm",
+                        outline=True,
+                        className="me-2 mb-2",
+                        style={
+                            'borderRadius': '8px',
+                            'fontSize': '0.9rem',
+                            'padding': '0.6rem 1rem',
+                            'borderWidth': '2px',
+                            'fontWeight': '500',
+                            'boxShadow': '0 2px 4px rgba(0,0,0,0.05)',
+                            'transition': 'all 0.2s'
+                        }
+                    ) for i, q in enumerate(suggested)
+                ], style={
+                    'display': 'flex',
+                    'flexWrap': 'wrap',
+                    'justifyContent': 'center',
+                    'gap': '0.5rem'
+                })
+            ], style={
+                'backgroundColor': '#f8f9fa',
+                'padding': '1.5rem',
+                'borderRadius': '12px',
+                'border': '1px solid #e9ecef'
+            })
+        ], style={'padding': '1rem 0'})
+    
+    messages = []
+    for idx, msg in enumerate(history):
+        if msg.get('type') == 'user':
+            messages.append(render_genie_message(msg, is_user=True))
+        else:
+            messages.append(render_genie_message(msg, is_user=False))
+            # Add follow-up questions after Genie responses
+            if msg.get('follow_up_questions'):
+                messages.append(
+                    html.Div([
+                        html.Div("💬 Follow-up:", style={
+                            'fontSize': '0.85rem',
+                            'fontWeight': '600',
+                            'color': '#198754',
+                            'marginBottom': '0.75rem'
+                        }),
+                        html.Div([
+                            dbc.Button(
+                                [html.I(className="bi bi-arrow-return-right me-2"), q],
+                                id={'type': 'pm-followup-question', 'index': f"{idx}-{i}"},
+                                color="success",
+                                size="sm",
+                                outline=True,
+                                className="me-2 mb-2",
+                                style={
+                                    'borderRadius': '8px',
+                                    'fontSize': '0.85rem',
+                                    'padding': '0.5rem 0.9rem',
+                                    'borderWidth': '2px',
+                                    'fontWeight': '500',
+                                    'boxShadow': '0 2px 4px rgba(0,0,0,0.05)'
+                                }
+                            ) for i, q in enumerate(msg['follow_up_questions'])
+                        ], style={'display': 'flex', 'flexWrap': 'wrap', 'gap': '0.5rem'})
+                    ], style={
+                        'marginBottom': '1.5rem',
+                        'paddingLeft': '2.5rem',
+                        'paddingRight': '1rem'
+                    })
+                )
+    
+    return html.Div(messages)
+
+
+# Handle suggested/follow-up question clicks (PM)
+@app.callback(
+    Output('pm-genie-input', 'value', allow_duplicate=True),
+    [Input({'type': 'pm-suggested-question', 'index': dash.dependencies.ALL}, 'n_clicks'),
+     Input({'type': 'pm-followup-question', 'index': dash.dependencies.ALL}, 'n_clicks')],
+    [State({'type': 'pm-suggested-question', 'index': dash.dependencies.ALL}, 'children'),
+     State({'type': 'pm-followup-question', 'index': dash.dependencies.ALL}, 'children')],
+    prevent_initial_call=True
+)
+def populate_question_pm(suggested_clicks, followup_clicks, suggested_texts, followup_texts):
+    ctx = dash.callback_context
+    if not ctx.triggered:
+        return dash.no_update
+    
+    # Helper function to extract text from button children
+    def extract_text(children):
+        if isinstance(children, str):
+            return children
+        elif isinstance(children, list):
+            # Button children is [Icon, Text], get the text (last element)
+            return children[-1] if children else ""
+        return str(children)
+    
+    # Find which button was clicked
+    triggered_id = ctx.triggered[0]['prop_id']
+    
+    if 'pm-suggested-question' in triggered_id:
+        # Find index of clicked suggested question
+        for i, clicks in enumerate(suggested_clicks):
+            if clicks and clicks > 0:
+                return extract_text(suggested_texts[i])
+    elif 'pm-followup-question' in triggered_id:
+        # Find index of clicked follow-up question
+        for i, clicks in enumerate(followup_clicks):
+            if clicks and clicks > 0:
+                return extract_text(followup_texts[i])
+    
+    return dash.no_update
+
+
+# Genie query handler (PM) - Now with conversation history
+@app.callback(
+    [Output('pm-genie-conversation-history', 'data', allow_duplicate=True),
+     Output('pm-genie-results', 'children'),
+     Output('pm-genie-input', 'value', allow_duplicate=True)],
+    [Input('btn-ask-genie-pm', 'n_clicks')],
+    [State('pm-genie-input', 'value'),
+     State('pm-genie-conversation-history', 'data'),
+     State('current-persona', 'data'),
+     State('pm-selected-property-store', 'data')],
+    prevent_initial_call=True
+)
+def ask_genie_pm(n_clicks, query, history, persona, pm_property):
+    if not n_clicks or not query:
+        return dash.no_update, html.Div(), dash.no_update
+    
+    # Set Genie auth context for PM
+    role = 'pm'
+    property_val = pm_property if pm_property else None
+    genie_service.set_auth_context(role=role, property=property_val)
+    
+    try:
+        result = genie_service.continue_conversation(query)
+        
+        if 'error' in result:
+            # Still show error in history
+            new_history = history + [
+                {'type': 'user', 'query': query},
+                {'type': 'genie', 'error': result['error'], 'results': []}
+            ]
+            return new_history, html.Div(), ""
+        
+        if not result.get('results'):
+            new_history = history + [
+                {'type': 'user', 'query': query},
+                {'type': 'genie', 'results': [{'type': 'text', 'content': 'No results found.'}]}
+            ]
+            return new_history, html.Div(), ""
+        
+        # Append user query and Genie response to history
+        new_history = history + [
+            {'type': 'user', 'query': query},
+            {'type': 'genie', **result}
+        ]
+        
+        # Clear input and return updated history
+        return new_history, html.Div(), ""
+        
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        error_history = history + [
+            {'type': 'user', 'query': query},
+            {'type': 'genie', 'error': str(e), 'results': []}
+        ]
+        return error_history, html.Div(), ""
+
+# Load PM property dropdown
+# Handle PM property button clicks
+@app.callback(
+    [Output('pm-selected-property-store', 'data'),
+     Output({'type': 'pm-property-btn', 'location': 'Austin, TX'}, 'outline'),
+     Output({'type': 'pm-property-btn', 'location': 'Boston, MA'}, 'outline')],
+    [Input({'type': 'pm-property-btn', 'location': dash.dependencies.ALL}, 'n_clicks')],
+    [State('current-screen', 'data')],
+    prevent_initial_call=False
+)
+def handle_pm_property_selection(n_clicks_list, screen):
+    if screen != 'pm-dashboard':
+        return dash.no_update, dash.no_update, dash.no_update
+    
+    ctx = dash.callback_context
+    if not ctx.triggered or not any(n_clicks_list):
+        # Default to Austin on initial load
+        print("📍 PM Dashboard: Defaulting to Austin, TX")
+        return 'austin-tx', False, True  # Austin selected (outline=False means filled)
+    
+    triggered_id = ctx.triggered[0]['prop_id']
+    
+    # Extract location from triggered button
+    if 'Austin' in triggered_id:
+        print("📍 PM Dashboard: Austin, TX selected")
+        return 'austin-tx', False, True  # Austin selected
+    elif 'Boston' in triggered_id:
+        print("📍 PM Dashboard: Boston, MA selected")
+        return 'boston-ma', True, False  # Boston selected
+    
+    return 'austin-tx', False, True  # Default
+
+# Load PM property details (header card)
+@app.callback(
+    Output('pm-selected-property-details-container', 'children'),
+    Input('pm-selected-property-store', 'data'),
+    prevent_initial_call=False
 )
 def load_pm_property_details(property_id):
     if not property_id:
-        return dbc.Alert("Please select a property to view details.", color="info")
+        return html.Div()
     
     try:
         details = property_service.get_property_details(property_id)
         if not details:
-            return dbc.Alert("Property not found.", color="warning")
+            return dbc.Alert("No Reviews Found For Property.", color="warning")
         
+        return dbc.Card([
+            dbc.CardBody([
+                # Property Header with location badge
+                dbc.Row([
+                    dbc.Col([
+                        html.H2(details['name'], className="mb-2", style={'fontWeight': '700', 'fontSize': '2rem'}),
+                        html.Div([
+                            html.I(className="bi bi-geo-alt-fill me-2", style={'color': '#17a2b8'}),
+                            html.Span(f"{details['city']}, {details['state']}", 
+                                     style={'fontSize': '1.1rem', 'fontWeight': '500', 'color': '#495057'}),
+                        ], className="mb-2"),
+                        html.P([
+                            html.Span(f"{details['reviews_count']} reviews", className="me-3"),
+                            html.Span(f"Rating: {details['avg_rating']}/5.0", className="me-3"),
+                        ], className="text-muted", style={'fontSize': '0.95rem'}),
+                        # Service Principal indicator
+                        html.Div([
+                            html.I(className="bi bi-shield-lock-fill me-2", style={'color': '#28a745', 'fontSize': '0.85rem'}),
+                            html.Span(
+                                f"Using Service Principal for {details['city']}, {details['state']}", 
+                                style={'fontSize': '0.85rem', 'color': '#6c757d', 'fontStyle': 'italic'}
+                            ),
+                        ], className="mt-2"),
+                    ], md=8),
+                    dbc.Col([
+                        dbc.Badge(
+                            f"📍 {details['city']}, {details['state']}", 
+                            color="info",
+                            className="p-3",
+                            style={'fontSize': '1rem', 'fontWeight': '500'}
+                        ),
+                    ], md=4, className="text-end d-flex align-items-center justify-content-end"),
+                ], className="mb-2"),
+            ], style={'padding': '2rem'})
+        ], style={'border': 'none', 'borderRadius': '12px', 'boxShadow': '0 4px 12px rgba(0,0,0,0.1)'})
+    except Exception as e:
+        return dbc.Alert(f"Error loading property details: {str(e)}", color="danger")
+
+# Load filtered dashboard iframe for PM
+@app.callback(
+    Output('pm-filtered-dashboard-iframe', 'children'),
+    Input('pm-selected-property-store', 'data'),
+    prevent_initial_call=False
+)
+def load_pm_filtered_dashboard(property_id):
+    if not property_id:
+        return html.Div()
+    
+    try:
+        # Get property details to extract location
+        details = property_service.get_property_details(property_id)
+        if not details:
+            return dbc.Alert("No Reviews Found For Property", color="warning")
+        
+        # Construct full location string (city, state)
+        location = f"{details['city']}, {details['state']}"
+        
+        # URL encode the location string (double encoding needed for Databricks filters)
+        from urllib.parse import quote
+        encoded_location = quote(quote(location, safe=''), safe='')
+        
+        # Base dashboard URL for embedding
+        base_url = "https://fe-vm-voc-lakehouse-inn-workspace.cloud.databricks.com/embed/dashboardsv3/01f0ab936a8815ffbc5b0dd3d8ca0f9f"
+        filtered_url = f"{base_url}?o=604717363374831&f_property_rating%7E57a7e64b={encoded_location}"
+        
+        print(f"🗺️ Loading PM dashboard filtered for location: {location}")
+        print(f"📊 Dashboard URL: {filtered_url}")
+        
+        return html.Iframe(
+            src=filtered_url,
+            style={
+                'width': '100%',
+                'height': '800px',
+                'border': 'none',
+                'borderRadius': '8px',
+                'boxShadow': '0 2px 8px rgba(0,0,0,0.1)'
+            }
+        )
+    except Exception as e:
+        print(f"❌ Error loading PM dashboard: {str(e)}")
+        return dbc.Alert(f"Error loading dashboard: {str(e)}", color="danger")
+
+# Load aspect analysis table for PM (Tab 2)
+@app.callback(
+    Output('pm-aspect-analysis-table', 'children'),
+    Input('pm-selected-property-store', 'data'),
+    prevent_initial_call=False
+)
+def load_pm_aspect_analysis_table(property_id):
+    if not property_id:
+        return html.Div()
+    
+    try:
+        details = property_service.get_property_details(property_id)
+        if not details or 'aspects' not in details:
+            return html.Div()
+        
+        # Create aspects data
         aspects_data = []
         for aspect in details['aspects']:
             aspects_data.append({
                 'Aspect': aspect['name'],
-                'Negative Reviews': f"{aspect['percentage']}%",
+                'Negative Reviews': f"{round(aspect['percentage']*100, 1)}%",
                 'Status': aspect['status'].upper()
             })
         
-        return [
-            dbc.Card([
-                dbc.CardBody([
-                    html.H4(details['name'], className="card-title"),
-                    html.P(f"{details['reviews_count']} reviews • Rating: {details['avg_rating']}/5.0",
-                          className="text-muted"),
-                    html.H5("Aspect Performance", className="mt-4 mb-3"),
-                    dash_table.DataTable(
-                        data=aspects_data,
-                        columns=[{'name': i, 'id': i} for i in aspects_data[0].keys()],
-                        style_cell={'textAlign': 'left', 'padding': '10px'},
-                        style_header={'backgroundColor': custom_style['primary'], 'color': 'white', 'fontWeight': 'bold'},
-                        style_data_conditional=[
-                            {'if': {'filter_query': '{Status} contains "CRITICAL"'},
-                             'backgroundColor': '#ffebee', 'color': custom_style['critical']},
-                            {'if': {'filter_query': '{Status} contains "WARNING"'},
-                             'backgroundColor': '#fff9c4', 'color': custom_style['warning']},
-                        ],
-                    )
-                ])
-            ])
-        ]
+        if not aspects_data:
+            return html.Div()
+        
+        # Create HTML table rows
+        table_rows = []
+        for aspect_item in aspects_data:
+            status = aspect_item['Status']
+            if 'CRITICAL' in status:
+                row_style = {'backgroundColor': '#ffebee', 'color': custom_style['critical'], 'fontWeight': '500'}
+            elif 'WARNING' in status:
+                row_style = {'backgroundColor': '#fff9c4', 'color': custom_style['warning'], 'fontWeight': '500'}
+            else:
+                row_style = {}
+            
+            table_rows.append(
+                html.Tr([
+                    html.Td(aspect_item['Aspect'], style={'padding': '12px'}),
+                    html.Td(aspect_item['Negative Reviews'], style={'padding': '12px', 'textAlign': 'center'}),
+                    html.Td(dbc.Badge(status, color='danger' if 'CRITICAL' in status else 'warning' if 'WARNING' in status else 'success'), 
+                           style={'padding': '12px', 'textAlign': 'center'}),
+                ], style=row_style)
+            )
+        
+        return dbc.Card([
+            dbc.CardBody([
+                html.H4("📋 Aspect Analysis", className="mb-3", style={'fontWeight': '600'}),
+                html.P([
+                    "Overview of all aspects and their performance for your property. ",
+                    html.Strong("Negative Reviews %"), 
+                    " shows the overall negative sentiment rate for this aspect."
+                ], 
+                      className="text-muted mb-3",
+                      style={'fontSize': '0.95rem'}),
+                dbc.Table([
+                    html.Thead(
+                        html.Tr([
+                            html.Th("Aspect", style={'padding': '12px', 'fontSize': '1rem'}),
+                            html.Th("Negative Reviews", style={'padding': '12px', 'fontSize': '1rem', 'textAlign': 'center'}),
+                            html.Th("Status", style={'padding': '12px', 'fontSize': '1rem', 'textAlign': 'center'}),
+                        ]),
+                        style={'backgroundColor': custom_style['primary'], 'color': 'white', 'fontWeight': 'bold'}
+                    ),
+                    html.Tbody(table_rows)
+                ], bordered=True, hover=True, responsive=True, striped=True,
+                   style={'fontSize': '0.95rem'})
+            ], style={'padding': '1.5rem'})
+        ], style={'border': 'none', 'borderRadius': '12px'})
     except Exception as e:
-        return dbc.Alert(f"Error loading property details: {str(e)}", color="danger")
+        print(f"Error loading PM aspect analysis table: {str(e)}")
+        return html.Div()
 
 # Load aspect options for PM Reviews Deep Dive
 @app.callback(
     Output('pm-aspect-selector', 'options'),
-    Input('pm-property-select', 'value')
+    Input('pm-selected-property-store', 'data')
 )
 def load_pm_aspect_options(property_id):
     if not property_id:
@@ -2455,22 +3328,34 @@ def load_pm_aspect_options(property_id):
 @app.callback(
     Output('pm-reviews-deep-dive-content', 'children'),
     [Input('pm-aspect-selector', 'value'),
-     Input('pm-property-select', 'value')]
+     Input('pm-selected-property-store', 'data')]
 )
 def load_pm_reviews_deep_dive(selected_aspect, property_id):
     if not property_id or not selected_aspect:
         return html.Div()
     
     try:
+        # Get property details to fetch correct status (consistent with table)
+        details = property_service.get_property_details(property_id)
+        
+        # Get deep dive data
         deep_dive_data = property_service.get_reviews_deep_dive(property_id, selected_aspect)
         deep_dive = deep_dive_data.get('deep_dive')
         
         if not deep_dive:
             return dbc.Alert("No data available for this aspect.", color="info")
         
-        # Create severity badge color
-        severity = deep_dive['severity'].lower()
-        severity_color = 'danger' if severity == 'critical' else ('warning' if severity == 'warning' else 'success')
+        # Find the correct status from property details for this aspect (same as table)
+        correct_status = None
+        if details and 'aspects' in details:
+            for aspect_info in details['aspects']:
+                if aspect_info['name'] == selected_aspect:
+                    correct_status = aspect_info['status']
+                    break
+        
+        # Use correct_status from table instead of deep_dive['severity']
+        severity = correct_status if correct_status else deep_dive['severity']
+        severity_color = 'danger' if severity.lower() == 'critical' else ('warning' if severity.lower() == 'warning' else 'success')
         
         return dbc.Card([
             dbc.CardBody([
@@ -2479,7 +3364,7 @@ def load_pm_reviews_deep_dive(selected_aspect, property_id):
                     dbc.Col([
                         html.H5(deep_dive['aspect'], className="mb-2", style={'fontWeight': '600'}),
                         dbc.Badge(
-                            deep_dive['severity'], 
+                            severity, 
                             color=severity_color, 
                             className="me-2",
                             style={'fontSize': '0.875rem'}
@@ -2526,7 +3411,7 @@ def load_pm_reviews_deep_dive(selected_aspect, property_id):
                                     html.H3(deep_dive['negative_count'], 
                                            className="mb-1",
                                            style={'fontWeight': '700', 'color': '#dc3545'}),
-                                    html.P("Negative Reviews", className="mb-0 text-muted", style={'fontSize': '0.9rem'}),
+                                    html.P("Negative Reviews (in last 21 days)", className="mb-0 text-muted", style={'fontSize': '0.9rem'}),
                                 ], className="text-center")
                             ], style={'padding': '1rem'})
                         ], style={'border': '2px solid #dc3545', 'borderRadius': '8px', 'backgroundColor': '#fff5f5'}),
@@ -2538,7 +3423,7 @@ def load_pm_reviews_deep_dive(selected_aspect, property_id):
                                     html.H3(deep_dive['positive_count'], 
                                            className="mb-1",
                                            style={'fontWeight': '700', 'color': '#28a745'}),
-                                    html.P("Positive Reviews", className="mb-0 text-muted", style={'fontSize': '0.9rem'}),
+                                    html.P("Positive Reviews (in last 21 days)", className="mb-0 text-muted", style={'fontSize': '0.9rem'}),
                                 ], className="text-center")
                             ], style={'padding': '1rem'})
                         ], style={'border': '2px solid #28a745', 'borderRadius': '8px', 'backgroundColor': '#f1f9f3'}),
@@ -2572,37 +3457,60 @@ def load_pm_reviews_deep_dive(selected_aspect, property_id):
                     ),
                 ]),
                 
-                html.Hr(className="my-4"),
-                
-                # Individual Reviews Browser
-                html.Div([
-                    html.Div([
-                        html.H6("📝 Individual Reviews", className="mb-3", style={'fontWeight': '600'}),
-                        dbc.Row([
-                            dbc.Col([
-                                html.Label("Timeframe:", style={'fontWeight': '500', 'marginBottom': '0.5rem'}),
-                                dcc.Dropdown(
-                                    id='pm-review-timeframe-selector',
-                                    options=[
-                                        {'label': 'Last 7 days', 'value': 7},
-                                        {'label': 'Last 14 days', 'value': 14},
-                                        {'label': 'Last 30 days', 'value': 30}
-                                    ],
-                                    value=30,
-                                    clearable=False,
-                                    style={'width': '100%'}
-                                ),
-                            ], md=3),
-                        ], className="mb-3"),
-                    ]),
-                    html.Div(id='pm-individual-reviews-list')
-                ], style={'padding': '1.5rem', 'backgroundColor': '#f8f9fa', 'borderRadius': '8px'}),
-                
             ], style={'padding': '1.5rem'})
         ], style={'border': 'none', 'borderRadius': '12px'})
         
     except Exception as e:
         return dbc.Alert(f"Error loading deep dive: {str(e)}", color="danger")
+
+# Load Individual Reviews Browser Controls for PM (separate from deep dive content)
+@app.callback(
+    Output('pm-review-browser-controls', 'children'),
+    [Input('pm-aspect-selector', 'value'),
+     Input('pm-selected-property-store', 'data')],
+    prevent_initial_call=False
+)
+def load_pm_review_browser_controls(selected_aspect, property_id):
+    """Render the review browser controls (timeframe dropdown and filter buttons) for PM"""
+    if not property_id or not selected_aspect:
+        return html.Div()
+    
+    return dbc.Card([
+        dbc.CardBody([
+            html.H6("📝 Individual Reviews", className="mb-3", style={'fontWeight': '600'}),
+            dbc.Row([
+                dbc.Col([
+                    html.Label("Timeframe:", style={'fontWeight': '500', 'marginBottom': '0.5rem'}),
+                    dcc.Dropdown(
+                        id='pm-review-timeframe-selector',
+                        options=[
+                            {'label': 'Last 7 days', 'value': 7},
+                            {'label': 'Last 14 days', 'value': 14},
+                            {'label': 'Last 30 days', 'value': 30}
+                        ],
+                        value=30,  # Default to 30 days for PM
+                        clearable=False,
+                        style={'width': '100%'},
+                        optionHeight=35
+                    ),
+                ], md=3),
+                dbc.Col([
+                    html.Label("Show Reviews:", style={'fontWeight': '500', 'marginBottom': '0.5rem'}),
+                    dbc.RadioItems(
+                        id='pm-review-filter',
+                        options=[
+                            {'label': 'All Reviews', 'value': 'all'},
+                            {'label': 'Negative Only', 'value': 'negative'},
+                            {'label': 'Positive Only', 'value': 'positive'}
+                        ],
+                        value='all',  # Default to show all
+                        inline=True,
+                        style={'marginTop': '0.25rem'}
+                    ),
+                ], md=6),
+            ], className="mb-3"),
+        ], style={'padding': '1.5rem'})
+    ], style={'border': 'none', 'borderRadius': '12px', 'backgroundColor': '#f8f9fa'})
 
 # Generate email
 @app.callback(
@@ -2618,7 +3526,7 @@ def generate_email(screen, property_id):
     try:
         property_data = property_service.get_property_details(property_id)
         if not property_data:
-            return dbc.Alert("Property not found.", color="warning"), None
+            return dbc.Alert("No Reviews Found For Property.", color="warning"), None
         
         email_result = email_service.generate_property_email(property_data)
         
@@ -2651,7 +3559,7 @@ def generate_hq_email_tab(n_clicks, property_id):
     try:
         property_data = property_service.get_property_details(property_id)
         if not property_data:
-            return dbc.Alert("Property not found.", color="warning")
+            return dbc.Alert("No Reviews Found For Property.", color="warning")
         
         email_result = email_service.generate_property_email(property_data)
         
@@ -2713,10 +3621,12 @@ def send_email(n_clicks, email_data):
 @app.callback(
     Output('hq-individual-reviews-list', 'children'),
     [Input('hq-review-timeframe-selector', 'value'),
-     Input('hq-aspect-selector', 'value')],
-    [State('selected-property-id', 'data')]
+     Input('hq-review-filter', 'value')],
+    [State('hq-aspect-selector', 'value'),
+     State('selected-property-id', 'data')],
+    prevent_initial_call=True  # Components are dynamically created
 )
-def load_hq_individual_reviews(days_back, selected_aspect, property_id):
+def load_hq_individual_reviews(days_back, review_filter, selected_aspect, property_id):
     # Check for None or empty values explicitly
     if property_id is None or selected_aspect is None or days_back is None:
         return html.Div()
@@ -2724,17 +3634,32 @@ def load_hq_individual_reviews(days_back, selected_aspect, property_id):
         return html.Div()
     
     try:
-        reviews = property_service.get_reviews_for_aspect(property_id, selected_aspect, days_back)
+        reviews_data = property_service.get_reviews_for_aspect(property_id, selected_aspect, days_back)
         
-        if not reviews:
-            return dbc.Alert("No negative reviews found for this timeframe.", color="info", className="mt-3")
+        # Handle new dictionary format with positive and negative reviews
+        if not reviews_data or (not reviews_data.get('positive') and not reviews_data.get('negative')):
+            return dbc.Alert("No reviews found for this timeframe.", color="info", className="mt-3")
         
-        # Create review cards
-        review_cards = []
-        for review in reviews:
+        negative_reviews = reviews_data.get('negative', [])
+        positive_reviews = reviews_data.get('positive', [])
+        
+        # Apply filter
+        if review_filter == 'negative':
+            positive_reviews = []  # Hide positive reviews
+        elif review_filter == 'positive':
+            negative_reviews = []  # Hide negative reviews
+        # If 'all', show both (no filtering needed)
+        
+        # Create a function to render review cards
+        def create_review_card(review, is_negative=True):
             # Get sentiment color
             sentiment = review.get('sentiment', 'negative')
-            sentiment_color = 'danger' if sentiment == 'very_negative' else 'warning'
+            if is_negative:
+                sentiment_color = 'danger' if sentiment == 'very_negative' else 'warning'
+                border_color = '#dc3545' if sentiment == 'very_negative' else '#ffc107'
+            else:
+                sentiment_color = 'success'
+                border_color = '#28a745'
             
             # Format star rating
             star_rating = review.get('star_rating', 0)
@@ -2744,52 +3669,99 @@ def load_hq_individual_reviews(days_back, selected_aspect, property_id):
             evidence = review.get('evidence', [])
             evidence_text = ' | '.join(evidence) if evidence else 'N/A'
             
-            # Format opinion terms (array of strings)
+            # Format opinion terms (array of strings) as colored badges
             opinion_terms = review.get('opinion_terms', [])
-            opinion_text = ', '.join(opinion_terms) if opinion_terms else 'N/A'
+            opinion_badge_color = '#dc3545' if is_negative else '#28a745'  # Red for negative, green for positive
+            opinion_badges = [
+                dbc.Badge(term, 
+                         style={
+                             'backgroundColor': opinion_badge_color,
+                             'color': 'white',
+                             'marginRight': '0.25rem',
+                             'marginBottom': '0.25rem',
+                             'fontSize': '0.8rem'
+                         })
+                for term in opinion_terms
+            ] if opinion_terms else [html.Span("N/A", className="text-muted", style={'fontSize': '0.85rem'})]
             
-            review_cards.append(
-                dbc.Card([
-                    dbc.CardBody([
-                        dbc.Row([
-                            dbc.Col([
-                                html.Div([
-                                    html.Strong(f"Review ID: {review.get('review_id', 'Unknown')}", style={'fontSize': '0.9rem'}),
-                                    dbc.Badge(sentiment.replace('_', ' ').title(), color=sentiment_color, className="ms-2"),
-                                ]),
-                                html.Div([
-                                    html.Span(stars, style={'color': '#ffc107', 'fontSize': '1rem'}),
-                                    html.Span(f" ({star_rating}/5)", className="text-muted ms-2", style={'fontSize': '0.85rem'}),
-                                ], className="mt-1"),
-                            ], md=8),
-                            dbc.Col([
-                                html.Div([
-                                    html.Small(f"Date: {review.get('review_date', 'N/A')}", className="text-muted d-block"),
-                                    html.Small(f"Channel: {review.get('channel', 'N/A')}", className="text-muted d-block"),
-                                ], className="text-end")
-                            ], md=4),
-                        ]),
-                        html.Hr(className="my-2"),
-                        html.P(review.get('review_text', 'No review text available.'), 
-                               style={'fontSize': '0.95rem', 'lineHeight': '1.6', 'marginTop': '1rem'}),
-                        html.Hr(className="my-2"),
-                        dbc.Row([
-                            dbc.Col([
-                                html.Strong("Evidence:", className="text-muted", style={'fontSize': '0.85rem'}),
-                                html.P(evidence_text, style={'fontSize': '0.85rem', 'marginTop': '0.25rem', 'fontStyle': 'italic'}),
-                            ], md=6),
-                            dbc.Col([
-                                html.Strong("Opinion Terms:", className="text-muted", style={'fontSize': '0.85rem'}),
-                                html.P(opinion_text, style={'fontSize': '0.85rem', 'marginTop': '0.25rem', 'color': '#dc3545'}),
-                            ], md=6),
-                        ]),
-                    ], style={'padding': '1rem'})
-                ], className="mb-3", style={'border': '1px solid #dee2e6', 'borderRadius': '8px'})
+            return dbc.Card([
+                dbc.CardBody([
+                    dbc.Row([
+                        dbc.Col([
+                            html.Div([
+                                html.Strong(f"Review ID: {review.get('review_uid', 'Unknown')}", style={'fontSize': '0.9rem'}),
+                                dbc.Badge(sentiment.replace('_', ' ').title(), color=sentiment_color, className="ms-2"),
+                            ]),
+                            html.Div([
+                                html.Span(stars, style={'color': '#ffc107', 'fontSize': '1rem'}),
+                                html.Span(f" ({star_rating}/5)", className="text-muted ms-2", style={'fontSize': '0.85rem'}),
+                            ], className="mt-1"),
+                        ], md=8),
+                        dbc.Col([
+                            html.Div([
+                                html.Small(f"Date: {review.get('review_date', 'N/A')}", className="text-muted d-block"),
+                                html.Small(f"Channel: {review.get('channel', 'N/A')}", className="text-muted d-block"),
+                            ], className="text-end")
+                        ], md=4),
+                    ]),
+                    html.Hr(className="my-2"),
+                    html.P(review.get('review_text', 'No review text available.'), 
+                           style={'fontSize': '0.95rem', 'lineHeight': '1.6', 'marginTop': '1rem'}),
+                    html.Hr(className="my-2"),
+                    dbc.Row([
+                        dbc.Col([
+                            html.Strong("Evidence:", className="text-muted", style={'fontSize': '0.85rem'}),
+                            html.P(evidence_text, style={'fontSize': '0.85rem', 'marginTop': '0.25rem', 'fontStyle': 'italic'}),
+                        ], md=6),
+                        dbc.Col([
+                            html.Strong("Opinion Terms:", className="text-muted", style={'fontSize': '0.85rem'}),
+                            html.Div(opinion_badges, style={'marginTop': '0.25rem'}),
+                        ], md=6),
+                    ]),
+                ], style={'padding': '1rem'})
+            ], className="mb-3", style={'border': f'1px solid {border_color}', 'borderRadius': '8px'})
+        
+        # Create sections for negative and positive reviews
+        sections = []
+        
+        # Negative Reviews Section
+        if negative_reviews:
+            negative_cards = [create_review_card(review, is_negative=True) for review in negative_reviews]
+            sections.append(
+                html.Div([
+                    html.Div([
+                        html.H6([
+                            html.I(className="bi bi-chat-left-text-fill me-2", style={'color': '#dc3545'}),
+                            f"Negative Reviews ({len(negative_reviews)})"
+                        ], style={'fontWeight': '600', 'color': '#dc3545', 'marginBottom': '1rem'}),
+                    ]),
+                    html.Div(negative_cards)
+                ], className="mb-4")
             )
         
+        # Positive Reviews Section
+        if positive_reviews:
+            positive_cards = [create_review_card(review, is_negative=False) for review in positive_reviews]
+            sections.append(
+                html.Div([
+                    html.Div([
+                        html.H6([
+                            html.I(className="bi bi-check-circle-fill me-2", style={'color': '#28a745'}),
+                            f"Positive Reviews ({len(positive_reviews)})"
+                        ], style={'fontWeight': '600', 'color': '#28a745', 'marginBottom': '1rem'}),
+                    ]),
+                    html.Div(positive_cards)
+                ], className="mb-4")
+            )
+        
+        total_reviews = len(negative_reviews) + len(positive_reviews)
         return html.Div([
-            html.P(f"Showing {len(reviews)} negative review(s)", className="text-muted mb-3", style={'fontSize': '0.9rem'}),
-            html.Div(review_cards)
+            html.P([
+                f"Showing {total_reviews} review(s) from selected timeframe: ",
+                html.Span(f"{len(negative_reviews)} negative", style={'color': '#dc3545', 'fontWeight': '600'}),
+                f", {len(positive_reviews)} positive",
+            ], className="text-muted mb-3", style={'fontSize': '0.9rem', 'fontWeight': '500'}),
+            html.Div(sections)
         ])
         
     except Exception as e:
@@ -2799,10 +3771,12 @@ def load_hq_individual_reviews(days_back, selected_aspect, property_id):
 @app.callback(
     Output('pm-individual-reviews-list', 'children'),
     [Input('pm-review-timeframe-selector', 'value'),
-     Input('pm-aspect-selector', 'value')],
-    [State('pm-property-select', 'value')]
+     Input('pm-review-filter', 'value')],
+    [State('pm-aspect-selector', 'value'),
+     State('pm-selected-property-store', 'data')],
+    prevent_initial_call=True  # Components are dynamically created
 )
-def load_pm_individual_reviews(days_back, selected_aspect, property_id):
+def load_pm_individual_reviews(days_back, review_filter, selected_aspect, property_id):
     # Check for None or empty values explicitly
     if property_id is None or selected_aspect is None or days_back is None:
         return html.Div()
@@ -2810,72 +3784,131 @@ def load_pm_individual_reviews(days_back, selected_aspect, property_id):
         return html.Div()
     
     try:
-        reviews = property_service.get_reviews_for_aspect(property_id, selected_aspect, days_back)
+        reviews_data = property_service.get_reviews_for_aspect(property_id, selected_aspect, days_back)
         
-        if not reviews:
-            return dbc.Alert("No negative reviews found for this timeframe.", color="info", className="mt-3")
+        # Handle new dictionary format with positive and negative reviews
+        if not reviews_data or (not reviews_data.get('positive') and not reviews_data.get('negative')):
+            return dbc.Alert("No reviews found for this timeframe.", color="info", className="mt-3")
         
-        # Create review cards
-        review_cards = []
-        for review in reviews:
-            # Get sentiment color
+        negative_reviews = reviews_data.get('negative', [])
+        positive_reviews = reviews_data.get('positive', [])
+        
+        # Apply filter
+        if review_filter == 'negative':
+            positive_reviews = []  # Hide positive reviews
+        elif review_filter == 'positive':
+            negative_reviews = []  # Hide negative reviews
+        # If 'all', show both (no filtering needed)
+        
+        # Use the same create_review_card function as HQ (can be extracted as helper in future refactor)
+        def create_review_card(review, is_negative=True):
             sentiment = review.get('sentiment', 'negative')
-            sentiment_color = 'danger' if sentiment == 'very_negative' else 'warning'
+            if is_negative:
+                sentiment_color = 'danger' if sentiment == 'very_negative' else 'warning'
+                border_color = '#dc3545' if sentiment == 'very_negative' else '#ffc107'
+            else:
+                sentiment_color = 'success'
+                border_color = '#28a745'
             
-            # Format star rating
             star_rating = review.get('star_rating', 0)
             stars = '⭐' * int(star_rating)
             
-            # Format evidence (array of strings)
             evidence = review.get('evidence', [])
             evidence_text = ' | '.join(evidence) if evidence else 'N/A'
             
-            # Format opinion terms (array of strings)
+            # Format opinion terms (array of strings) as colored badges
             opinion_terms = review.get('opinion_terms', [])
-            opinion_text = ', '.join(opinion_terms) if opinion_terms else 'N/A'
+            opinion_badge_color = '#dc3545' if is_negative else '#28a745'  # Red for negative, green for positive
+            opinion_badges = [
+                dbc.Badge(term, 
+                         style={
+                             'backgroundColor': opinion_badge_color,
+                             'color': 'white',
+                             'marginRight': '0.25rem',
+                             'marginBottom': '0.25rem',
+                             'fontSize': '0.8rem'
+                         })
+                for term in opinion_terms
+            ] if opinion_terms else [html.Span("N/A", className="text-muted", style={'fontSize': '0.85rem'})]
             
-            review_cards.append(
-                dbc.Card([
-                    dbc.CardBody([
-                        dbc.Row([
-                            dbc.Col([
-                                html.Div([
-                                    html.Strong(f"Review ID: {review.get('review_id', 'Unknown')}", style={'fontSize': '0.9rem'}),
-                                    dbc.Badge(sentiment.replace('_', ' ').title(), color=sentiment_color, className="ms-2"),
-                                ]),
-                                html.Div([
-                                    html.Span(stars, style={'color': '#ffc107', 'fontSize': '1rem'}),
-                                    html.Span(f" ({star_rating}/5)", className="text-muted ms-2", style={'fontSize': '0.85rem'}),
-                                ], className="mt-1"),
-                            ], md=8),
-                            dbc.Col([
-                                html.Div([
-                                    html.Small(f"Date: {review.get('review_date', 'N/A')}", className="text-muted d-block"),
-                                    html.Small(f"Channel: {review.get('channel', 'N/A')}", className="text-muted d-block"),
-                                ], className="text-end")
-                            ], md=4),
-                        ]),
-                        html.Hr(className="my-2"),
-                        html.P(review.get('review_text', 'No review text available.'), 
-                               style={'fontSize': '0.95rem', 'lineHeight': '1.6', 'marginTop': '1rem'}),
-                        html.Hr(className="my-2"),
-                        dbc.Row([
-                            dbc.Col([
-                                html.Strong("Evidence:", className="text-muted", style={'fontSize': '0.85rem'}),
-                                html.P(evidence_text, style={'fontSize': '0.85rem', 'marginTop': '0.25rem', 'fontStyle': 'italic'}),
-                            ], md=6),
-                            dbc.Col([
-                                html.Strong("Opinion Terms:", className="text-muted", style={'fontSize': '0.85rem'}),
-                                html.P(opinion_text, style={'fontSize': '0.85rem', 'marginTop': '0.25rem', 'color': '#dc3545'}),
-                            ], md=6),
-                        ]),
-                    ], style={'padding': '1rem'})
-                ], className="mb-3", style={'border': '1px solid #dee2e6', 'borderRadius': '8px'})
+            return dbc.Card([
+                dbc.CardBody([
+                    dbc.Row([
+                        dbc.Col([
+                            html.Div([
+                                html.Strong(f"Review ID: {review.get('review_uid', 'Unknown')}", style={'fontSize': '0.9rem'}),
+                                dbc.Badge(sentiment.replace('_', ' ').title(), color=sentiment_color, className="ms-2"),
+                            ]),
+                            html.Div([
+                                html.Span(stars, style={'color': '#ffc107', 'fontSize': '1rem'}),
+                                html.Span(f" ({star_rating}/5)", className="text-muted ms-2", style={'fontSize': '0.85rem'}),
+                            ], className="mt-1"),
+                        ], md=8),
+                        dbc.Col([
+                            html.Div([
+                                html.Small(f"Date: {review.get('review_date', 'N/A')}", className="text-muted d-block"),
+                                html.Small(f"Channel: {review.get('channel', 'N/A')}", className="text-muted d-block"),
+                            ], className="text-end")
+                        ], md=4),
+                    ]),
+                    html.Hr(className="my-2"),
+                    html.P(review.get('review_text', 'No review text available.'), 
+                           style={'fontSize': '0.95rem', 'lineHeight': '1.6', 'marginTop': '1rem'}),
+                    html.Hr(className="my-2"),
+                    dbc.Row([
+                        dbc.Col([
+                            html.Strong("Evidence:", className="text-muted", style={'fontSize': '0.85rem'}),
+                            html.P(evidence_text, style={'fontSize': '0.85rem', 'marginTop': '0.25rem', 'fontStyle': 'italic'}),
+                        ], md=6),
+                        dbc.Col([
+                            html.Strong("Opinion Terms:", className="text-muted", style={'fontSize': '0.85rem'}),
+                            html.Div(opinion_badges, style={'marginTop': '0.25rem'}),
+                        ], md=6),
+                    ]),
+                ], style={'padding': '1rem'})
+            ], className="mb-3", style={'border': f'1px solid {border_color}', 'borderRadius': '8px'})
+        
+        # Create sections for negative and positive reviews
+        sections = []
+        
+        # Negative Reviews Section
+        if negative_reviews:
+            negative_cards = [create_review_card(review, is_negative=True) for review in negative_reviews]
+            sections.append(
+                html.Div([
+                    html.Div([
+                        html.H6([
+                            html.I(className="bi bi-chat-left-text-fill me-2", style={'color': '#dc3545'}),
+                            f"Negative Reviews ({len(negative_reviews)})"
+                        ], style={'fontWeight': '600', 'color': '#dc3545', 'marginBottom': '1rem'}),
+                    ]),
+                    html.Div(negative_cards)
+                ], className="mb-4")
             )
         
+        # Positive Reviews Section
+        if positive_reviews:
+            positive_cards = [create_review_card(review, is_negative=False) for review in positive_reviews]
+            sections.append(
+                html.Div([
+                    html.Div([
+                        html.H6([
+                            html.I(className="bi bi-check-circle-fill me-2", style={'color': '#28a745'}),
+                            f"Positive Reviews ({len(positive_reviews)})"
+                        ], style={'fontWeight': '600', 'color': '#28a745', 'marginBottom': '1rem'}),
+                    ]),
+                    html.Div(positive_cards)
+                ], className="mb-4")
+            )
+        
+        total_reviews = len(negative_reviews) + len(positive_reviews)
         return html.Div([
-            html.P(f"Showing {len(reviews)} negative review(s)", className="text-muted mb-3", style={'fontSize': '0.9rem'}),
-            html.Div(review_cards)
+            html.P([
+                f"Showing {total_reviews} review(s) from selected timeframe: ",
+                html.Span(f"{len(negative_reviews)} negative", style={'color': '#dc3545', 'fontWeight': '600'}),
+                f", {len(positive_reviews)} positive",
+            ], className="text-muted mb-3", style={'fontSize': '0.9rem', 'fontWeight': '500'}),
+            html.Div(sections)
         ])
         
     except Exception as e:

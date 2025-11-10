@@ -44,13 +44,13 @@ class EmailService:
         if critical_issues:
             all_issues_summary.append("CRITICAL ISSUES (Immediate Action Required):")
             for issue in critical_issues:
-                all_issues_summary.append(f"  • {issue['name']}: {issue['percentage']:.1f}% negative reviews - CRITICAL")
+                all_issues_summary.append(f"  • {issue['name']}: {issue['percentage']*100:.1f}% negative reviews - CRITICAL")
         
         # Warning issues (brief mention)
         if warning_issues:
             all_issues_summary.append("\nWARNING LEVEL ISSUES (Action Recommended):")
             for issue in warning_issues:
-                all_issues_summary.append(f"  • {issue['name']}: {issue['percentage']:.1f}% negative reviews - Needs attention")
+                all_issues_summary.append(f"  • {issue['name']}: {issue['percentage']*100:.1f}% negative reviews - Needs attention")
         
         issues_summary_text = '\n'.join(all_issues_summary)
         
@@ -93,7 +93,7 @@ PRIMARY FOCUS: {primary_issue['name']} (CRITICAL PRIORITY)
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 ISSUE DETAILS:
-- Negative review rate: {primary_issue['percentage']:.1f}% (Target: <2%)
+- Negative review rate: {primary_issue['percentage']*100:.1f}% (Target: <2%)
 - Status: {primary_issue['status'].upper()}
 - Guest feedback indicates this requires immediate corrective action
 
@@ -148,7 +148,7 @@ Dear Property Manager,
 Great news! Our Voice of Customer analytics show that {property_name} is performing excellently across all monitored aspects.
 
 PERFORMANCE SUMMARY:
-{chr(10).join(f'- {aspect["name"]}: {aspect["percentage"]}% negative reviews (Excellent)' for aspect in property_data['aspects'])}
+{chr(10).join(f'- {aspect["name"]}: {aspect["percentage"]*100:.1f}% negative reviews (Excellent)' for aspect in property_data['aspects'])}
 
 GUEST SATISFACTION METRICS:
 - Average Rating: {property_data.get('avg_rating', 'N/A')}/5.0

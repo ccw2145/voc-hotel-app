@@ -29,9 +29,11 @@ class RecommendationsService:
                 return self._runbook_cache
         
         try:
-            # Query Lakebase OLTP table using PostgreSQL syntax
+            # Query Lakebase OLTP table using PostgreSQL syntax with service principal auth
             query = f"SELECT * FROM {self.runbook_schema}.{self.runbook_table}"
-            result = database_service.query_lakebase(query)
+            
+            # Use HQ credentials for runbook data (global configuration)
+            result = database_service.query_lakebase(query, role='hq', property=None)
             
             if result is None:
                 print("⚠️  Warning: Lakebase query returned None, using placeholder runbook data")
