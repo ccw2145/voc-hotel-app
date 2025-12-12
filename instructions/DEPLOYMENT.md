@@ -17,10 +17,10 @@ This guide walks through deploying the Lakehouse Inn Voice of Customer applicati
 ### 3. Required Permissions
 Ensure your service principal has:
 - [ ] `CAN USE` permission on SQL Warehouse
-- [ ] `SELECT` permission on Unity Catalog tables:
-  - `lakehouse_inn_catalog.voc.open_issues_diagnosis`
-  - `lakehouse_inn_catalog.voc.review_aspect_details`
-  - `lakehouse_inn_catalog.voc.hotel_locations`
+- [ ] `SELECT` permission on Unity Catalog tables (configurable via env vars):
+  - Issues table: `lakehouse_inn_catalog.voc.open_issues_diagnosis` (configurable via env vars)
+  - Reviews table: `lakehouse_inn_catalog.voc.review_aspect_details` (configurable via env vars)
+  - Hotels table: `lakehouse_inn_catalog.voc.hotel_locations` (configurable via env vars)
 - [ ] Access to Lakebase OLTP instance (`fe_shared_demo`)
 - [ ] Access to Genie Space
 
@@ -149,13 +149,18 @@ databricks apps logs voc-hotel-app
 
 ### Lakebase Connection Fails
 
-**Symptoms:** Runbook data not loading
+**Symptoms:** Runbook data not loading, warning "psycopg not installed"
 
 **Solutions:**
-1. Verify `LAKEBASE_INSTANCE_NAME` and `LAKEBASE_DB_NAME` are correct
-2. Check service principal has Lakebase access
-3. Verify `voc.aspect_runbook_db` table exists
-4. Test connection from Databricks notebook
+1. Ensure `requirements.txt` includes:
+   - `psycopg[binary]` (version 3 with binary extras)
+   - `psycopg-pool` (connection pooling)
+2. Verify `LAKEBASE_INSTANCE_NAME` and `LAKEBASE_DB_NAME` are correct
+3. Check service principal has Lakebase access
+4. Verify `voc.aspect_runbook_db` table exists
+5. Test connection from Databricks notebook
+
+**Note:** The app uses `psycopg` (version 3), not `psycopg2`. The `[binary]` extra is required for Databricks Apps to include pre-compiled PostgreSQL binaries.
 
 ## Monitoring
 
