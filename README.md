@@ -42,7 +42,7 @@ Lakehouse Inn is a hospitality brand committed to delivering exceptional guest e
 
 The application reads directly from Unity Catalog Delta tables in Databricks:
 
-- **Issues Table**: `lakehouse_inn_catalog.voc.open_issues_diagnosis`
+- **Issues Table**: Configurable via `DATABRICKS_CATALOG`, `DATABRICKS_SCHEMA`, and `ISSUES_TABLE_NAME` (defaults to `lakehouse_inn_catalog.voc.open_issues_diagnosis`)
   - Contains open issues identified across all properties
   - Tracks location, aspect, severity, status, volume, and more
   - Powers property diagnostics, flagged properties list, and recommendations
@@ -163,7 +163,7 @@ To verify your Databricks connection is working:
 - Verify your SQL warehouse is running in Databricks
 - Ensure your service principal has proper permissions:
   - `CAN USE` on the SQL warehouse
-  - `SELECT` permission on `lakehouse_inn_catalog.voc.open_issues_diagnosis`
+  - `SELECT` permission on your configured Unity Catalog tables (default: `lakehouse_inn_catalog.voc.*`)
 
 ## Lakehouse Inn Brand
 

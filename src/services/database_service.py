@@ -33,8 +33,10 @@ class RotatingTokenConnection(psycopg.Connection if LAKEBASE_AVAILABLE else obje
         
         # Create WorkspaceClient with service principal credentials
         if client_id and client_secret and server_hostname:
+            # Add https:// prefix if not present (server_hostname is guaranteed not None here)
+            host = server_hostname if server_hostname.startswith('https://') else f"https://{server_hostname}"
             w = WorkspaceClient(
-                host=f"https://{server_hostname}" if not server_hostname.startswith('https://') else server_hostname,
+                host=host,
                 client_id=client_id,
                 client_secret=client_secret
             )
@@ -85,10 +87,13 @@ class DatabaseService:
         Returns:
             Tuple of (client_id, client_secret)
         """
+
         if role == 'hq':
-            client_id = os.getenv("HQ_SP_CLIENT_ID")
-            client_secret = os.getenv("HQ_SP_CLIENT_SECRET")
-            print(f"🔐 Using HQ service principal")
+            client_id = os.getenv("HQ_SP_CLIENT_ID",None)
+            client_secret = os.getenv("HQ_SP_CLIENT_SECRET",None)
+            # client_id = os.getenv("DATABRICKS_CLIENT_ID")
+            # client_secret = os.getenv("DATABRICKS_CLIENT_SECRET")
+            print(f"🔐 Using HQ/App service principal")
         elif role == 'pm':
             if property == 'boston-ma':
                 client_id = os.getenv("BOSTON_SP_CLIENT_ID")
@@ -100,15 +105,10 @@ class DatabaseService:
                 print(f"🔐 Using Austin PM service principal")
             else:
                 # Default to HQ if property not specified
-                client_id = os.getenv("HQ_SP_CLIENT_ID")
-                client_secret = os.getenv("HQ_SP_CLIENT_SECRET")
+                client_id = os.getenv("DATABRICKS_CLIENT_ID")
+                client_secret = os.getenv("DATABRICKS_CLIENT_SECRET")
                 print(f"🔐 Using HQ service principal (PM property not specified)")
-        else:
-            # Fallback to HQ credentials
-            client_id = os.getenv("HQ_SP_CLIENT_ID")
-            client_secret = os.getenv("HQ_SP_CLIENT_SECRET")
-            print(f"🔐 Using HQ service principal (fallback)")
-        
+        print(f"🔐 Client ID: {client_id}")
         return (client_id, client_secret)
     
     def _credential_provider(self, role: str = 'hq', property: str = None):
@@ -117,7 +117,9 @@ class DatabaseService:
         
         if not client_id or not client_secret:
             print(f"⚠️  Warning: Service principal credentials not found for role={role}, property={property}")
-            return None
+            cfg=Config()
+            print(f"🔐 Using PAT authentication")
+            return cfg.authenticate
         
         config = Config(
             host=f"https://{self.server_hostname}",
@@ -198,6 +200,10 @@ class DatabaseService:
             print("⚠️  Warning: LAKEBASE_INSTANCE_NAME not set - Lakebase features unavailable")
             return None
         
+        if not self.server_hostname:
+            print("⚠️  Warning: DATABRICKS_SERVER_HOSTNAME not set - cannot connect to Lakebase")
+            return None
+        
         # Note: We create a new pool with service principal credentials
         # In production, you might want to cache pools by (role, property) combination
         
@@ -206,8 +212,10 @@ class DatabaseService:
             client_id, client_secret = self._get_sp_credentials(role, property)
             
             # Create WorkspaceClient with service principal to get instance details
+            # Add https:// prefix if not present
+            host = self.server_hostname if self.server_hostname.startswith('https://') else f"https://{self.server_hostname}"
             w = WorkspaceClient(
-                host=f"https://{self.server_hostname}" if not self.server_hostname.startswith('https://') else f"https://{self.server_hostname}",
+                host=host,
                 client_id=client_id,
                 client_secret=client_secret
             )
@@ -274,6 +282,13 @@ class DatabaseService:
         except Exception as e:
             print(f"⚠️  Warning: Lakebase query failed: {str(e)}")
             return None
+        finally:
+            # Properly close the pool to avoid thread cleanup issues
+            try:
+                pool.close()
+            except Exception as e:
+                # Suppress cleanup errors in Databricks Apps environment
+                pass
 
 
 # Singleton instance

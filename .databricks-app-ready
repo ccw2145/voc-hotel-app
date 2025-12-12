@@ -27,6 +27,14 @@ This file confirms that the application is configured for Databricks Apps deploy
 - **Entry Point**: dash_app.py
 - **Dependencies**: Listed in requirements.txt
 
+## Critical Dependencies for Databricks Apps
+
+For Lakebase OLTP to work on Databricks Apps, ensure requirements.txt includes:
+- ✅ psycopg[binary] - PostgreSQL adapter with pre-compiled binaries
+- ✅ psycopg-pool - Connection pooling for psycopg
+
+Note: Use psycopg v3 with [binary] extra, NOT psycopg2
+
 ## Environment Variables Required
 
 All environment variables are configured in app.yaml:
@@ -60,7 +68,7 @@ Lakebase OLTP:
 ## Features Verified for Deployment
 
 ✅ HQ Dashboard with tabbed interface
-   - Tab 1: Property Analytics Dashboard
+   - Tab 1: Property Ovewrview
    - Tab 2: Aspect Analysis + Review Deep Dive
    - Tab 3: Generate Email
    - Floating Ask Genie section

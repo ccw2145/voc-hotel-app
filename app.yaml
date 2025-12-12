@@ -23,16 +23,32 @@ command:
 env:
   # SQL Warehouse for Unity Catalog queries
   - name: DATABRICKS_SQL_WAREHOUSE_PATH
-    value: /sql/1.0/warehouses/a9fea331792bc9d6
+    # valueFrom: sql-warehouse
+    value: /sql/1.0/warehouses/75fd8278393d07eb
+
+  - name: DATABRICKS_SERVER_HOSTNAME
+    value: e2-demo-west.cloud.databricks.com
 
   # Genie Space ID for AI queries
   - name: GENIE_SPACE_ID
-    value: 01f0a933aa7a14dc8b377db69cd237ee
+    value: 01f0c8a5873a169b84ed013f2edbece0
   
-  # Lakebase OLTP database configuration
-  - name: LAKEBASE_INSTANCE_NAME
-    value: voc-app-demo
-  
-  - name: LAKEBASE_DB_NAME
-    value: lakehouse_inn_db
+  - name: DATABRICKS_CATALOG
+    value: main
+  - name: DATABRICKS_SCHEMA
+    value: voc_demo
+  - name: ISSUES_TABLE_NAME
+    value: open_issues_diagnosis
+  - name: REVIEWS_TABLE_NAME
+    value: review_aspect_details
+  - name: HOTELS_TABLE_NAME
+    value: hotel_locations
+  - name: RUNBOOK_TABLE_NAME
+    value: aspect_runbook
 
+
+  - name: DATABRICKS_OVERVIEW_DASHBOARD_URL
+    value: https://e2-demo-west.cloud.databricks.com/embed/dashboardsv3/01f0c59e3622190a95124c8cdc691ac6?o=2556758628403379
+
+  - name: DATABRICKS_PROPERTY_DASHBOARD_URL
+    value: https://e2-demo-west.cloud.databricks.com/embed/dashboardsv3/01f0c5a0f3bb1f3f9d1eb328cdf78986?o=2556758628403379

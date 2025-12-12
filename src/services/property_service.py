@@ -5,6 +5,7 @@ Property Service - Manages property data and health metrics for Lakehouse Inn pr
 from typing import Dict, List, Optional
 from datetime import datetime
 import json
+import os
 from .database_service import database_service
 
 
@@ -12,9 +13,11 @@ class PropertyService:
     """Service for managing property data and health metrics"""
     
     def __init__(self):
-        self.issues_table = "lakehouse_inn_catalog.voc.open_issues_diagnosis"
-        self.reviews_table = "lakehouse_inn_catalog.voc.review_aspect_details"
-        self.hotels_table = "lakehouse_inn_catalog.voc.hotel_locations"
+        catalog = os.getenv('DATABRICKS_CATALOG', 'lakehouse_inn_catalog')
+        schema = os.getenv('DATABRICKS_SCHEMA', 'voc')
+        self.issues_table = f"{catalog}.{schema}.{os.getenv('ISSUES_TABLE_NAME', 'open_issues_diagnosis')}"
+        self.reviews_table = f"{catalog}.{schema}.{os.getenv('REVIEWS_TABLE_NAME', 'review_aspect_details')}"
+        self.hotels_table = f"{catalog}.{schema}.{os.getenv('HOTELS_TABLE_NAME', 'hotel_locations')}"
         self._cache = {}
         self._cache_timestamp = None
         self._hotels_cache = None
@@ -235,9 +238,10 @@ class PropertyService:
                 columns = [desc[0] for desc in issues.description]
                 issues = [dict(zip(columns, row)) for row in rows]
             
-            # Cache the results
-            self._cache['issues'] = issues
-            self._cache_timestamp = datetime.now()
+            # Only cache when no timeframe filter (all data)
+            if days is None:
+                self._cache['issues'] = issues
+                self._cache_timestamp = datetime.now()
             
             return issues
             
@@ -425,9 +429,9 @@ class PropertyService:
             # Fallback to placeholder
             return 0, 0.0
     
-    def get_flagged_properties(self) -> List[Dict]:
+    def get_flagged_properties(self, days: Optional[int] = None) -> List[Dict]:
         """Get properties with critical or warning issues from database"""
-        issues = self._get_issues_data()
+        issues = self._get_issues_data(days=days)
         flagged = []
         for issue in issues:
             nms_open = float(issue.get('nms_open', 0))
@@ -445,9 +449,9 @@ class PropertyService:
                 })
         return flagged
     
-    def get_flagged_properties_grouped(self) -> List[Dict]:
+    def get_flagged_properties_grouped(self, days: Optional[int] = None) -> List[Dict]:
         """Get properties grouped by property_id with all their issues"""
-        issues = self._get_issues_data()
+        issues = self._get_issues_data(days=days)
         
         # Group by property
         properties = {}
@@ -517,12 +521,12 @@ class PropertyService:
             'total_aspects': total_possible_aspects
         }
     
-    def get_healthy_properties_grouped(self) -> Dict:
+    def get_healthy_properties_grouped(self, days: Optional[int] = None) -> Dict:
         """Get healthy properties grouped by 'healthy' vs 'no_reviews'"""
         all_properties = self.get_all_properties()
         
-        # Get flagged property IDs from the issues table
-        issues = self._get_issues_data()
+        # Get flagged property IDs from the issues table with timeframe
+        issues = self._get_issues_data(days=days)
         flagged_locations = set()
         for issue in issues:
             # Read severity directly from issues table
@@ -556,7 +560,7 @@ class PropertyService:
         
         return grouped
     
-    def get_diagnostics_kpis(self, days: Optional[int] = 21) -> Dict:
+    def get_diagnostics_kpis(self, days: Optional[int] = None) -> Dict:
         """Calculate overall diagnostics KPIs using review_aspect_details table
         
         Args:
@@ -979,12 +983,12 @@ class PropertyService:
             'latest_review_date': 'N/A'
         }
     
-    def get_properties_by_region_and_severity(self) -> Dict:
+    def get_properties_by_region_and_severity(self, days: Optional[int] = None) -> Dict:
         """Group flagged properties by geographic region and severity"""
         city_to_region = self._get_city_to_region_mapping()
         
         # flagged = self.get_flagged_properties_grouped()
-        flagged = self.get_flagged_properties_grouped()
+        flagged = self.get_flagged_properties_grouped(days=days)
 
         if not flagged:
             return {}

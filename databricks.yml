@@ -10,7 +10,7 @@ targets:
     mode: development
     default: true
     workspace:
-      host: https://fe-vm-voc-lakehouse-inn-workspace.cloud.databricks.com/
+      host: https://e2-demo-west.cloud.databricks.com
 
   ## Optionally, there could be 'staging' or 'prod' targets here.
   #

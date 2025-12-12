@@ -54,15 +54,7 @@ class GenieService:
         # Check if PAT is available (for backward compatibility)
         databricks_token = os.getenv("DATABRICKS_TOKEN")
         server_hostname = os.getenv("DATABRICKS_SERVER_HOSTNAME") or os.getenv("DATABRICKS_HOST")
-        
-        # if databricks_token:
-        #     # Use personal access token for Genie (user-level access)
-        #     print(f"🔐 Using PAT for Genie authentication")
-        #     return WorkspaceClient(
-        #         host=f"https://{server_hostname}" if not server_hostname.startswith('https://') else server_hostname,
-        #         token=databricks_token
-        #     )
-        # else:
+
         try:
             # Use service principal based on role/property
             client_id, client_secret = self._get_sp_credentials(self._role, self._property)
@@ -84,43 +76,101 @@ class GenieService:
         self.conversation_id = None
         return {"success": True, "message": "Conversation reset"}
     
+    def _format_property_name(self, property_id: str) -> str:
+        """Convert property ID like 'austin-tx' to display name like 'Austin, TX'"""
+        if not property_id:
+            return property_id
+        
+        # Split by hyphen and capitalize each part
+        parts = property_id.split('-')
+        if len(parts) == 2:
+            city = parts[0].replace('_', ' ').title()  # Handle underscores if any
+            state = parts[1].upper()
+            return f"{city}, {state}"
+        
+        # Fallback: just capitalize
+        return property_id.replace('-', ' ').replace('_', ' ').title()
+    
     def get_suggested_questions(self) -> List[str]:
         """Get suggested questions from the Genie space"""
         try:
+            import json
+            
             # Get the Genie space details
-            space = self.w.genie.get_space(self.genie_space_id)
-            
-            # Extract suggested questions if available
+            space = self.w.genie.get_space(self.genie_space_id,include_serialized_space=True)
+            # space = self.w.genie.get_space(self.genie_space_id,include_serialized_space=True)
+
+            # Extract sample questions from serialized_space JSON
             suggested = []
-            if hasattr(space, 'instructions') and space.instructions:
-                # Some spaces have instructions that include suggested questions
-                print(f"DEBUG: Space instructions: {space.instructions[:200] if space.instructions else 'None'}")
             
-            # Try to get from space attributes
-            if hasattr(space, 'sample_questions') and space.sample_questions:
-                suggested = list(space.sample_questions)
+            if hasattr(space, 'serialized_space') and space.serialized_space:
+                try:
+                    # Parse the JSON string
+                    space_config = json.loads(space.serialized_space)
+                    print(f"DEBUG: Space config: {space_config}")
+                    # Navigate to config.sample_questions
+                    if 'config' in space_config and 'sample_questions' in space_config['config']:
+                        sample_questions = space_config['config']['sample_questions']
+                        print(f"DEBUG: Sample questions: {sample_questions}")
+                        # Extract question from each sample_question object
+                        for sq in sample_questions:
+                            if 'question' in sq:
+                                # question can be a string or array
+                                question = sq['question']
+                                if isinstance(question, list):
+                                    suggested.extend(question)
+                                else:
+                                    suggested.append(question)
+                        
+                        print(f"✅ Found {len(suggested)} sample questions from space")
+                except json.JSONDecodeError as e:
+                    print(f"⚠️  Failed to parse serialized_space JSON: {str(e)}")
+                except Exception as e:
+                    print(f"⚠️  Error extracting sample questions: {str(e)}")
             
             # Default suggested questions if none from API
             if not suggested:
-                suggested = [
+                print("⚠️  No sample questions in space, using defaults")
+                
+                # Make questions property-aware if property is selected
+                if self._property:
+                    # Property-specific questions
+                    property_name = self._format_property_name(self._property)  # e.g., "Austin, TX"
+                    suggested = [
+                        f"How many issues are there in {property_name}?",
+                        f"What are the top 5 aspects with the most issues in {property_name}?",
+                        f"Show me issue trends for {property_name}",
+                        f"What's the average sentiment score for {property_name}?"
+                    ]
+                else:
+                    # Generic/portfolio-wide questions (HQ without property selection)
+                    suggested = [
+                        "How many issues are there?",
+                        "What are the top 5 aspects with the most issues?",
+                        "Show me issues by location",
+                        "What's the average sentiment score?"
+                    ]
+            
+            return suggested
+            
+        except Exception as e:
+            print(f"⚠️ Could not get suggested questions: {str(e)}")
+            # Return default questions based on property context
+            if self._property:
+                property_name = self._format_property_name(self._property)
+                return [
+                    f"How many issues are there in {property_name}?",
+                    f"What are the top 5 aspects with the most issues in {property_name}?",
+                    f"Show me issue trends for {property_name}",
+                    f"What's the average sentiment score for {property_name}?"
+                ]
+            else:
+                return [
                     "How many issues are there?",
                     "What are the top 5 aspects with the most issues?",
                     "Show me issues by location",
                     "What's the average sentiment score?"
                 ]
-            
-            print(f"✨ Suggested questions: {suggested}")
-            return suggested
-            
-        except Exception as e:
-            print(f"⚠️ Could not get suggested questions: {str(e)}")
-            # Return default questions
-            return [
-                "How many issues are there?",
-                "What are the top 5 aspects with the most issues?",
-                "Show me issues by location",
-                "What's the average sentiment score?"
-            ]
 
     def get_query_result(self, statement_id):
         """Fetch query result from statement_id, adapted from example without Pandas"""
@@ -142,28 +192,29 @@ class GenieService:
                 if status is None and hasattr(statement, 'execution'):
                     status = getattr(statement.execution, 'state', None)
             
-            # Check if we have results
+            # Extract columns from manifest (sibling of result, not inside it)
+            columns = []
+            if (hasattr(statement, 'manifest') and statement.manifest and
+                hasattr(statement.manifest, 'schema') and statement.manifest.schema and
+                hasattr(statement.manifest.schema, 'columns')):
+                columns = [col.name for col in statement.manifest.schema.columns]
+                print(f"✅ Extracted {len(columns)} columns: {columns}")
+            
+            # Extract data from result.data_array
+            data_array = []
             if hasattr(statement, 'result') and statement.result:
-                # Extract columns from manifest.schema.columns
-                columns = []
-                if (hasattr(statement.result, 'manifest') and 
-                    statement.result.manifest and 
-                    hasattr(statement.result.manifest, 'schema') and 
-                    hasattr(statement.result.manifest.schema, 'columns')):
-                    columns = [col.name for col in statement.result.manifest.schema.columns]
-                
-                # Extract data from data_array (list of lists to list of dicts)
-                data_array = []
                 if hasattr(statement.result, 'data_array') and statement.result.data_array:
                     # If no columns but we have data, generate column names
                     if not columns and statement.result.data_array:
                         first_row = statement.result.data_array[0]
                         columns = [f'col_{i}' for i in range(len(first_row))]
-                        print(f"DEBUG: Generated column names: {columns}")
+                        print(f"⚠️  No columns in schema, generated: {columns}")
                     
                     for row_list in statement.result.data_array:
                         row_dict = dict(zip(columns, [str(val) if val is not None else '' for val in row_list]))
                         data_array.append(row_dict)
+                    
+                    print(f"✅ Processed {len(data_array)} rows")
                 
                 return {
                     "columns": columns,
@@ -171,8 +222,9 @@ class GenieService:
                     "num_rows": len(data_array)
                 }
             else:
+                # Handle case where result doesn't exist
                 state_str = str(status) if status else "UNKNOWN"
-                return {"error": f"Statement state: {state_str}"}
+                return {"error": f"No result available. Statement state: {state_str}"}
         except Exception as e:
             return {"error": str(e)}
 
@@ -202,7 +254,7 @@ class GenieService:
         # Debug: Print all response attributes
         print(f"DEBUG: Response type: {type(response)}")
         print(f"DEBUG: Response attributes: {dir(response)}")
-        
+        print(f"DEBUG: Response: {response}")
         result = {
             "query": getattr(response, 'query', '') if hasattr(response, 'query') else "",
             "results": [],
@@ -241,11 +293,7 @@ class GenieService:
         print(f"DEBUG: Full attachments object: {attachments}")
         
         for idx, i in enumerate(attachments):
-            print(f"\n{'='*60}")
-            print(f"DEBUG: Processing attachment {idx}")
-            print(f"DEBUG: Attachment {idx} type: {type(i)}")
-            print(f"DEBUG: Attachment {idx} attributes: {dir(i)}")
-            print(f"{'='*60}\n")
+           
             
             # Check if attachment has text content
             if hasattr(i, 'text') and i.text:
@@ -259,12 +307,10 @@ class GenieService:
             # Check if attachment ALSO has query (not elif - an attachment can have both!)
             if hasattr(i, 'query') and i.query:
                 print(f"DEBUG: Found query attachment")
-                print(f"DEBUG: Query object attributes: {dir(i.query)}")
                 
                 description = getattr(i.query, 'description', 'Generated query')
                 query_text = getattr(i.query, 'query', '')
-                print(f"A: {description}")
-                
+               
                 # Check for query result - could be in attachment or at response level
                 statement_id = None
                 
@@ -339,15 +385,28 @@ class GenieService:
                             })
                             break
 
-        # Extract follow-up questions if available
-        if hasattr(response, 'suggested_follow_ups') and response.suggested_follow_ups:
-            result["follow_up_questions"] = list(response.suggested_follow_ups)
-            print(f"✨ Found {len(result['follow_up_questions'])} follow-up questions")
-        elif hasattr(response, 'follow_up_questions') and response.follow_up_questions:
-            result["follow_up_questions"] = list(response.follow_up_questions)
-            print(f"✨ Found {len(result['follow_up_questions'])} follow-up questions")
-        else:
-            # Generate smart follow-up questions based on the query context
+        # Extract follow-up questions from attachments
+        # API structure: attachments[].suggested_questions.questions[]
+        result["follow_up_questions"] = []
+        
+        for attachment in attachments:
+            # Check for suggested_questions object with questions array
+            if hasattr(attachment, 'suggested_questions') and attachment.suggested_questions:
+                if hasattr(attachment.suggested_questions, 'questions') and attachment.suggested_questions.questions:
+                    result["follow_up_questions"] = list(attachment.suggested_questions.questions)
+                    print(f"✨ Found {len(result['follow_up_questions'])} suggested questions from attachment")
+                    break  # Use first set of suggested questions found
+        
+        # Fallback: check at response level (in case API structure varies)
+        if not result["follow_up_questions"]:
+            if hasattr(response, 'suggested_questions') and response.suggested_questions:
+                if hasattr(response.suggested_questions, 'questions') and response.suggested_questions.questions:
+                    result["follow_up_questions"] = list(response.suggested_questions.questions)
+                    print(f"✨ Found {len(result['follow_up_questions'])} suggested questions from response")
+        
+        # Generate smart follow-up questions if none found
+        if not result["follow_up_questions"]:
+            print("⚠️  No suggested questions found, generating defaults")
             if result.get('results'):
                 has_table = any(item['type'] == 'table' for item in result['results'])
                 if has_table:

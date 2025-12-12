@@ -7,15 +7,22 @@ from .database_service import database_service
 from functools import lru_cache
 import time
 import json
+import os
 
 
 class RecommendationsService:
     """Service for generating prescriptive recommendations based on property issues"""
     
     def __init__(self):
-        # Lakebase OLTP table (PostgreSQL schema.table format)
-        self.runbook_schema = "voc"
-        self.runbook_table = "aspect_runbook_db"
+        # Unity Catalog Delta table for runbook data (primary source)
+        catalog = os.getenv('DATABRICKS_CATALOG', 'lakehouse_inn_catalog')
+        schema = os.getenv('DATABRICKS_SCHEMA', 'voc')
+        self.runbook_table = f"{catalog}.{schema}.{os.getenv('RUNBOOK_TABLE_NAME', 'aspect_runbook')}"
+        
+        # Lakebase OLTP table (fallback source - PostgreSQL schema.table format)
+        self.lakebase_runbook_schema = "voc"
+        self.lakebase_runbook_table = "aspect_runbook_db"
+        
         self._cache_timestamp = None
         self._cache_duration = 300  # 5 minutes
     
@@ -29,15 +36,23 @@ class RecommendationsService:
                 return self._runbook_cache
         
         try:
-            # Query Lakebase OLTP table using PostgreSQL syntax with service principal auth
-            query = f"SELECT * FROM {self.runbook_schema}.{self.runbook_table}"
+            # Try Unity Catalog Delta table first (primary source)
+            query = f"SELECT * FROM {self.runbook_table}"
+            result = database_service.query(query, role='hq', property=None)
             
-            # Use HQ credentials for runbook data (global configuration)
-            result = database_service.query_lakebase(query, role='hq', property=None)
-            
-            if result is None:
-                print("⚠️  Warning: Lakebase query returned None, using placeholder runbook data")
-                return self._get_placeholder_runbook()
+            if result is None or len(result) == 0:
+                print("⚠️  Warning: Delta table query returned None or empty, trying Lakebase fallback...")
+                # Fall back to Lakebase OLTP
+                lakebase_query = f"SELECT * FROM {self.lakebase_runbook_schema}.{self.lakebase_runbook_table}"
+                result = database_service.query_lakebase(lakebase_query, role='hq', property=None)
+                
+                if result is None:
+                    print("⚠️  Warning: Both Delta and Lakebase queries failed, using placeholder runbook data")
+                    return self._get_placeholder_runbook()
+                else:
+                    print("✅ Successfully loaded runbook data from Lakebase (fallback)")
+            else:
+                print(f"✅ Loaded {len(result)} runbook entries from Delta table")
             
             # Convert to dictionary keyed by aspect
             runbook_dict = {}

@@ -1,7 +1,7 @@
 fastapi
 uvicorn
 python-dotenv
-databricks-sdk==0.65.0
+databricks-sdk==0.73
 pydantic
 databricks-sql-connector
 dash
@@ -9,3 +9,4 @@ dash-bootstrap-components
 pandas
 psycopg[binary]
 psycopg-pool
+requests

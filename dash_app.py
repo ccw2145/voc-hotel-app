@@ -67,14 +67,14 @@ def get_city_coordinates(city, state):
     return {'lat': 39.8283, 'lon': -98.5795}
 
 # Initialize Dash app with Bootstrap theme and Bootstrap Icons
-app = dash.Dash(__name__, external_stylesheets=[
-    dbc.themes.BOOTSTRAP,
-    "https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css"
-])
+app = dash.Dash(__name__, 
+    external_stylesheets=[
+        dbc.themes.BOOTSTRAP,
+        "https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css"
+    ],
+    suppress_callback_exceptions=True  # Allow dynamic IDs in callbacks
+)
 app.title = "Lakehouse Inn - Voice of Customer"
-
-# Suppress callback exceptions for dynamically created components
-app.config.suppress_callback_exceptions = True
 
 # Custom CSS
 custom_style = {
@@ -379,14 +379,10 @@ def create_hq_properties():
             dbc.Card([
                 dbc.CardBody([
                     html.H4("📊 Issues Overview", className="mb-4", style={'fontWeight': '600'}),
-                    html.Iframe(
-                        src="https://fe-vm-voc-lakehouse-inn-workspace.cloud.databricks.com/embed/dashboardsv3/01f0b6901b281266b22ae454018a5b82?o=604717363374831",
-                        style={
-                            'width': '100%',
-                            'height': '800px',
-                            'border': 'none',
-                            'borderRadius': '8px',
-                        }
+                    dcc.Loading(
+                        id="loading-hq-overview-dashboard",
+                        type="default",
+                        children=html.Div(id='hq-overview-dashboard-iframe')
                     )
                 ], style={'padding': '1.5rem'})
             ], style={'border': 'none', 'borderRadius': '12px'}, className="mb-5")
@@ -412,10 +408,24 @@ def create_hq_properties():
         
         # Flagged Properties - Grouped View
         dbc.Container([
-            html.H3([
-                html.Span("🚨", style={'marginRight': '0.5rem'}),
-                "Properties Requiring Attention"
-            ], className="mb-4", style={'fontWeight': '600', 'fontSize': '1.75rem'}),
+            html.Div([
+                html.H3([
+                    html.Span("🚨", style={'marginRight': '0.5rem'}),
+                    "Properties Requiring Attention"
+                ], className="mb-0 d-inline-block", style={'fontWeight': '600', 'fontSize': '1.75rem'}),
+                html.I(
+                    className="bi bi-info-circle ms-2",
+                    id={'type': 'open-severity-modal', 'view': 'hq-properties'},
+                    style={
+                        'fontSize': '1.25rem',
+                        'color': '#0d6efd',
+                        'cursor': 'pointer',
+                        'verticalAlign': 'middle'
+                    },
+                    title="Click to view severity threshold logic",
+                    n_clicks=0
+                ),
+            ], className="mb-4", style={'display': 'flex', 'alignItems': 'center'}),
             dcc.Loading(
                 id="loading-flagged-properties",
                 type="default",
@@ -572,12 +582,13 @@ def create_hq_dashboard():
                     html.Div([
                         html.H4("Ask Genie", className="mb-0", style={'fontWeight': '600'}),
                         dbc.Button(
-                            [html.I(className="bi bi-arrow-clockwise me-1"), "Clear Chat"],
+                            [html.I(className="bi bi-arrow-clockwise me-2"), "New Conversation"],
                             id='btn-clear-genie-hq',
-                            color="light",
+                            color="secondary",
                             size="sm",
                             outline=True,
-                            style={'borderRadius': '6px'}
+                            style={'borderRadius': '6px', 'fontWeight': '500'},
+                            title="Clear conversation history and start fresh"
                         ),
                     ], style={'display': 'flex', 'justifyContent': 'space-between', 'alignItems': 'center', 'marginBottom': '1rem'}),
                     
@@ -685,8 +696,8 @@ def create_pm_dashboard():
             ], className="my-4 py-3"),
         ], fluid=True, style={'maxWidth': '1400px', 'borderBottom': '1px solid #e0e0e0', 'paddingBottom': '1rem', 'marginBottom': '2rem'}),
         
-        # Hidden store for selected property
-        dcc.Store(id='pm-selected-property-store', data=None),
+        # Hidden store for selected property (default to Austin, TX)
+        dcc.Store(id='pm-selected-property-store', data='austin-tx'),
         
         # Property details (stays visible)
         dbc.Container([
@@ -772,12 +783,13 @@ def create_pm_dashboard():
                     html.Div([
                         html.H4("Ask Genie", className="mb-0", style={'fontWeight': '600'}),
                         dbc.Button(
-                            [html.I(className="bi bi-arrow-clockwise me-1"), "Clear Chat"],
+                            [html.I(className="bi bi-arrow-clockwise me-2"), "New Conversation"],
                             id='btn-clear-genie-pm',
-                            color="light",
+                            color="secondary",
                             size="sm",
                             outline=True,
-                            style={'borderRadius': '6px'}
+                            style={'borderRadius': '6px', 'fontWeight': '500'},
+                            title="Clear conversation history and start fresh"
                         ),
                     ], style={'display': 'flex', 'justifyContent': 'space-between', 'alignItems': 'center', 'marginBottom': '1rem'}),
                     
@@ -861,6 +873,56 @@ app.layout = html.Div([
             dbc.Button("Close", id="close-no-reviews-modal", className="ms-auto", n_clicks=0)
         ),
     ], id="no-reviews-modal", is_open=False),
+    
+    # Modal for severity threshold explanation
+    dbc.Modal([
+        dbc.ModalHeader(dbc.ModalTitle("Severity Threshold Logic")),
+        dbc.ModalBody([
+            html.P("Status is determined by comparing recent performance against a 21-day baseline:", 
+                  style={'marginBottom': '1rem'}),
+            html.Div([
+                html.H6("Thresholds:", style={'fontWeight': '600', 'marginBottom': '0.75rem'}),
+                html.Ul([
+                    html.Li([
+                        html.Strong("Critical: "), 
+                        "neg_7d ≥ 0.80 ",
+                        html.Strong("OR "),
+                        "delta_pp ≥ 15.0"
+                    ], style={'marginBottom': '0.5rem'}),
+                    html.Li([
+                        html.Strong("Warning: "), 
+                        "neg_7d ≥ 0.60 ",
+                        html.Strong("OR "),
+                        "delta_pp ≥ 10.0"
+                    ], style={'marginBottom': '0.5rem'}),
+                    html.Li([
+                        html.Strong("Minimum volume: "), 
+                        "Only triggered if volume_7d ≥ 7"
+                    ]),
+                ], style={'paddingLeft': '1.5rem'}),
+            ], style={'marginBottom': '1rem'}),
+            html.Div([
+                html.H6("Definitions:", style={'fontWeight': '600', 'marginBottom': '0.75rem'}),
+                html.Ul([
+                    html.Li([
+                        html.Strong("neg_7d: "), 
+                        "Negative review percentage in last 7 days"
+                    ], style={'marginBottom': '0.5rem'}),
+                    html.Li([
+                        html.Strong("delta_pp: "), 
+                        "Change in negative share (percentage points) vs 21-day baseline"
+                    ], style={'marginBottom': '0.5rem'}),
+                    html.Li([
+                        html.Strong("volume_7d: "), 
+                        "Total number of reviews in last 7 days"
+                    ]),
+                ], style={'paddingLeft': '1.5rem'}),
+            ]),
+        ]),
+        dbc.ModalFooter(
+            dbc.Button("Close", id="close-severity-modal", className="ms-auto", n_clicks=0)
+        ),
+    ], id="severity-threshold-modal", is_open=False),
 ])
 
 # ========================================
@@ -1005,16 +1067,20 @@ def handle_button_clicks(hq, pm, back_prop, back_roles, switch_hq, switch_pm):
 # Load HQ Properties Subtitle with counts
 @app.callback(
     Output('hq-properties-subtitle', 'children'),
-    Input('current-screen', 'data')
+    [Input('current-screen', 'data'),
+     Input('hq-stats-timeframe-selector', 'value')]
 )
-def load_hq_properties_subtitle(screen):
+def load_hq_properties_subtitle(screen, timeframe):
     if screen != 'hq-properties':
         return html.Div()
     
     try:
-        # Get stats
-        stats = property_service.get_diagnostics_kpis()
-        flagged = property_service.get_flagged_properties()
+        # Convert 'all' to None for historical data
+        days = None if timeframe == 'all' else timeframe
+        
+        # Get stats with timeframe
+        stats = property_service.get_diagnostics_kpis(days=days)
+        flagged = property_service.get_flagged_properties(days=days)
         
         # Count unique flagged properties
         flagged_count = len(set(prop['property_id'] for prop in flagged))
@@ -1032,6 +1098,81 @@ def load_hq_properties_subtitle(screen):
         return html.P("Review flagged properties and take action", 
                      className="text-muted",
                      style={'fontSize': '1.125rem'})
+
+# Load HQ Overview Dashboard iframe with date filter
+@app.callback(
+    Output('hq-overview-dashboard-iframe', 'children'),
+    [Input('current-screen', 'data'),
+     Input('hq-stats-timeframe-selector', 'value')],
+    prevent_initial_call=False
+)
+def load_hq_overview_dashboard(screen, timeframe):
+    if screen != 'hq-properties':
+        return html.Div()
+    
+    try:
+        from datetime import datetime, timedelta
+        from urllib.parse import quote
+        
+        # Set auth context
+        property_service.set_auth_context(role='hq', property=None)
+        
+        # Calculate date range based on timeframe
+        if timeframe == 'all':
+            # For "All Historical", don't add date filter
+            base_url = os.getenv('DATABRICKS_OVERVIEW_DASHBOARD_URL', "https://fe-vm-voc-lakehouse-inn-workspace.cloud.databricks.com/embed/dashboardsv3/01f0b6901b281266b22ae454018a5b82?o=604717363374831")
+            filtered_url = base_url
+        else:
+            # Get latest review date from data
+            days = None if timeframe == 'all' else timeframe
+            review_stats = property_service.get_summary_stats_from_reviews(days=days)
+            latest_date_str = review_stats.get('latest_review_date', None)
+            
+            if latest_date_str:
+                # Parse the latest review date (format: YYYY-MM-DD or similar)
+                try:
+                    end_date = datetime.strptime(latest_date_str, '%Y-%m-%d')
+                except:
+                    # Try alternative format if needed
+                    try:
+                        end_date = datetime.strptime(latest_date_str.split('T')[0], '%Y-%m-%d')
+                    except:
+                        # Fallback to current date if parsing fails
+                        end_date = datetime.now()
+            else:
+                # Fallback to current date if no latest date available
+                end_date = datetime.now()
+            
+            # Calculate start date by subtracting timeframe days from latest review date
+            start_date = end_date - timedelta(days=int(timeframe))
+            
+            # Format dates for Databricks: YYYY-MM-DD
+            start_date_str = start_date.strftime('%Y-%m-%d')
+            end_date_str = end_date.strftime('%Y-%m-%d')
+            
+            # Build the URL with date filter
+            # Format: f_overview~6c1cd566={start_date}T00%3A00%3A00.000~{end_date}T23%3A59%3A59.999
+            date_filter = f"{start_date_str}T00%3A00%3A00.000~{end_date_str}T23%3A59%3A59.999"
+            
+            base_url_overview = os.getenv('DATABRICKS_OVERVIEW_DASHBOARD_URL', "https://fe-vm-voc-lakehouse-inn-workspace.cloud.databricks.com/embed/dashboardsv3/01f0b6901b281266b22ae454018a5b82?o=604717363374831")            
+            filtered_url = f"{base_url_overview}&f_overview%7E6c1cd566={date_filter}"
+            
+            print(f"📅 Dashboard date range: {start_date_str} to {end_date_str} (Latest review: {latest_date_str})")
+        
+        return html.Iframe(
+            src=filtered_url,
+            style={
+                'width': '100%',
+                'height': '800px',
+                'border': 'none',
+                'borderRadius': '8px',
+            }
+        )
+    except Exception as e:
+        print(f"❌ Error loading overview dashboard: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return dbc.Alert(f"Error loading dashboard: {str(e)}", color="warning")
 
 # Load executive KPIs for HQ
 @app.callback(
@@ -1058,7 +1199,7 @@ def load_executive_kpis(screen, timeframe):
         
         print(f"🔄 Loading executive KPIs for HQ Properties (role=hq, property=None, days={days})")
         kpis = property_service.get_diagnostics_kpis(days=days)
-        print(f"✅ Loaded KPIs: {kpis}")
+        print(f"✅ Loaded KPIs: {kpis} for {days} days")
         
         # Determine timeframe label for display
         if days is None:
@@ -1229,13 +1370,14 @@ def update_latest_date_display(screen, timeframe):
 # Load properties map
 @app.callback(
     Output('properties-map', 'figure'),
-    Input('current-screen', 'data'),
+    [Input('current-screen', 'data'),
+     Input('hq-stats-timeframe-selector', 'value')],
     prevent_initial_call=False
 )
-def load_properties_map(screen):
+def load_properties_map(screen, timeframe):
     print(f"\n{'='*60}")
     print(f"🗺️ LOAD_PROPERTIES_MAP CALLED")
-    print(f"   screen: {screen}")
+    print(f"   screen: {screen}, timeframe: {timeframe}")
     print(f"{'='*60}\n")
     
     if screen != 'hq-properties':
@@ -1243,12 +1385,15 @@ def load_properties_map(screen):
         return go.Figure()
     
     try:
-        print(f"🔄 Loading properties map for screen: {screen}")
+        # Convert 'all' to None for historical data
+        days = None if timeframe == 'all' else timeframe
+        
+        print(f"🔄 Loading properties map for screen: {screen}, days: {days}")
         properties = property_service.get_all_properties()
         print(f"   Got {len(properties)} properties")
         
-        # Get flagged properties once
-        flagged = property_service.get_flagged_properties()
+        # Get flagged properties once with timeframe
+        flagged = property_service.get_flagged_properties(days=days)
         flagged_ids = {f['property_id']: f for f in flagged}
         
         # Prepare map data
@@ -1434,6 +1579,34 @@ def close_no_reviews_modal(n_clicks, is_open):
         return False
     return dash.no_update
 
+# Handle severity threshold modal with pattern-matching
+@app.callback(
+    Output('severity-threshold-modal', 'is_open'),
+    [Input({'type': 'open-severity-modal', 'view': dash.dependencies.ALL}, 'n_clicks'),
+     Input('close-severity-modal', 'n_clicks')],
+    State('severity-threshold-modal', 'is_open'),
+    prevent_initial_call=True
+)
+def toggle_severity_modal(n_clicks_list, n_close, is_open):
+    ctx = callback_context
+    if not ctx.triggered:
+        return dash.no_update
+    
+    triggered_id = ctx.triggered[0]['prop_id'].split('.')[0]
+    triggered_value = ctx.triggered[0]['value']  
+
+    # Close button
+    if triggered_id == 'close-severity-modal':
+        return False
+    
+    # Any open button (pattern-matched)
+    if 'open-severity-modal' in triggered_id:
+        if triggered_value and triggered_value > 0:
+            return True
+        # return True
+    
+    return dash.no_update
+
 # Load HQ property dropdown options
 @app.callback(
     Output('hq-property-select', 'options'),
@@ -1508,27 +1681,31 @@ def update_selected_property_from_hq_dropdown(property_id, screen):
 # Load flagged properties grouped by region
 @app.callback(
     Output('flagged-properties-grouped', 'children'),
-    Input('current-screen', 'data'),
+    [Input('current-screen', 'data'),
+     Input('hq-stats-timeframe-selector', 'value')],
     prevent_initial_call=False
 )
-def load_flagged_properties_grouped(screen):
+def load_flagged_properties_grouped(screen, timeframe):
     if screen != 'hq-properties':
         return html.Div()
     
     try:
-        print(f"🔄 Loading grouped flagged properties for screen: {screen}")
-        grouped_data = property_service.get_properties_by_region_and_severity()
+        # Convert 'all' to None for historical data
+        days = None if timeframe == 'all' else timeframe
+        
+        print(f"🔄 Loading grouped flagged properties for screen: {screen}, days: {days}")
+        grouped_data = property_service.get_properties_by_region_and_severity(days=days)
         
         if not grouped_data:
             return dbc.Alert("✅ No properties flagged for attention.", color="success", className="mb-0")
         
         # Limit to top regions and add "Show More" option
-        show_all_regions = len(grouped_data) <= 5
-        regions_to_show = list(grouped_data.items())[:5] if not show_all_regions else list(grouped_data.items())
+        show_all_regions = len(grouped_data) <= 10
+        regions_to_show = list(grouped_data.items())[:10] if not show_all_regions else list(grouped_data.items())
         
         accordion_items = []
         
-        for region, properties in regions_to_show:
+        for region, properties in regions_to_show: 
             critical_count = len(properties['critical'])
             warning_count = len(properties['warning'])
             total_count = critical_count + warning_count
@@ -1566,7 +1743,7 @@ def load_flagged_properties_grouped(screen):
                         html.Span([
                             html.Span(f"{aspect['aspect'].replace('_', ' ').title()}", 
                                      style={'fontWeight': '500', 'color': '#495057'}),
-                            html.Span(f" {int(round(aspect['negative_percentage']))}%", 
+                            html.Span(f" {int(round(aspect['negative_percentage']*100))}%", 
                                      style={'color': '#dc3545', 'fontWeight': '600'})
                         ], style={'fontSize': '0.8rem'})
                     )
@@ -1634,7 +1811,7 @@ def load_flagged_properties_grouped(screen):
                         html.Span([
                             html.Span(f"{aspect['aspect'].replace('_', ' ').title()}", 
                                      style={'fontWeight': '500', 'color': '#495057'}),
-                            html.Span(f" {int(round(aspect['negative_percentage']))}%", 
+                            html.Span(f" {int(round(aspect['negative_percentage']*100))}%", 
                                      style={'color': '#f39c12', 'fontWeight': '600'})
                         ], style={'fontSize': '0.8rem'})
                     )
@@ -1736,19 +1913,23 @@ def load_flagged_properties_grouped(screen):
 # Load all properties summary with expand/collapse
 @app.callback(
     Output('all-properties-summary', 'children'),
-    Input('current-screen', 'data'),
+    [Input('current-screen', 'data'),
+     Input('hq-stats-timeframe-selector', 'value')],
     prevent_initial_call=False
 )
-def load_all_properties_summary(screen):
+def load_all_properties_summary(screen, timeframe):
     if screen != 'hq-properties':
         return html.Div()
     
     try:
-        print(f"🔄 Loading all properties summary for screen: {screen}")
+        # Convert 'all' to None for historical data
+        days = None if timeframe == 'all' else timeframe
+        
+        print(f"🔄 Loading all properties summary for screen: {screen}, days: {days}")
         properties = property_service.get_all_properties()
         
-        # Get flagged properties to exclude them
-        flagged = property_service.get_flagged_properties()
+        # Get flagged properties to exclude them with timeframe
+        flagged = property_service.get_flagged_properties(days=days)
         flagged_property_ids = set(prop['property_id'] for prop in flagged)
         
         # Filter out flagged properties
@@ -1824,16 +2005,20 @@ def toggle_all_properties(n_clicks, is_open):
 @app.callback(
     Output('all-properties-expanded-list', 'children'),
     Input('collapse-all-properties', 'is_open'),
-    State('current-screen', 'data'),
+    [State('current-screen', 'data'),
+     State('hq-stats-timeframe-selector', 'value')],
     prevent_initial_call=True
 )
-def load_expanded_properties_list(is_open, screen):
+def load_expanded_properties_list(is_open, screen, timeframe):
     if not is_open or screen != 'hq-properties':
         return html.Div()
     
     try:
-        # Get grouped healthy properties
-        grouped_properties = property_service.get_healthy_properties_grouped()
+        # Convert 'all' to None for historical data
+        days = None if timeframe == 'all' else timeframe
+        
+        # Get grouped healthy properties with timeframe
+        grouped_properties = property_service.get_healthy_properties_grouped(days=days)
         healthy = grouped_properties['healthy']
         no_reviews = grouped_properties['no_reviews']
         
@@ -2168,7 +2353,21 @@ def load_aspect_analysis_table(property_id, screen):
         
         return dbc.Card([
             dbc.CardBody([
-                html.H4("📋 Aspect Analysis", className="mb-3", style={'fontWeight': '600'}),
+                html.Div([
+                    html.H4("📋 Aspect Analysis", className="mb-0 d-inline-block", style={'fontWeight': '600'}),
+                    html.I(
+                        className="bi bi-info-circle ms-2",
+                        id={'type': 'open-severity-modal', 'view': 'hq-aspect'},
+                        style={
+                            'fontSize': '1.1rem',
+                            'color': '#0d6efd',
+                            'cursor': 'pointer',
+                            'verticalAlign': 'middle'
+                        },
+                        title="Click to view severity threshold logic",
+                        n_clicks=0
+                    ),
+                ], className="mb-3", style={'display': 'flex', 'alignItems': 'center'}),
                 html.P([
                     "Overview of all aspects and their performance. ",
                     html.Strong("Negative Reviews %"), 
@@ -2214,12 +2413,13 @@ def load_filtered_dashboard(property_id, screen):
         location = f"{details['city']}, {details['state']}"
         
         # Original Property Dashboard URL (keep this one for property details)
-        base_url = "https://fe-vm-voc-lakehouse-inn-workspace.cloud.databricks.com/embed/dashboardsv3/01f0ab936a8815ffbc5b0dd3d8ca0f9f"
+        base_url_property = os.getenv('DATABRICKS_PROPERTY_DASHBOARD_URL')
+        # "https://fe-vm-voc-lakehouse-inn-workspace.cloud.databricks.com/embed/dashboardsv3/01f0ab936a8815ffbc5b0dd3d8ca0f9f"
         
         # Add location filter parameter
         from urllib.parse import quote
         encoded_location = quote(quote(location, safe=''), safe='')
-        filtered_url = f"{base_url}?o=604717363374831&f_property_rating%7E57a7e64b={encoded_location}"
+        filtered_url = f"{base_url_property}&f_property_rating%7E57a7e64b={encoded_location}"
 
         print(f"🗺️ Loading dashboard filtered for location: {location}")
         print(f"📊 Dashboard URL: {filtered_url}")
@@ -2625,35 +2825,39 @@ def render_genie_message(message, is_user=False):
         ], style={'marginBottom': '1rem'})
 
 
-# Clear conversation (HQ)
+# Clear conversation (HQ) - triggered by button click
 @app.callback(
     [Output('hq-genie-conversation-history', 'data'),
-     Output('hq-genie-input', 'value')],
+     Output('hq-genie-input', 'value'),
+     Output('hq-genie-results-container', 'children', allow_duplicate=True)],
     [Input('btn-clear-genie-hq', 'n_clicks')],
     prevent_initial_call=True
 )
 def clear_genie_conversation_hq(n_clicks):
+    print("🔄 Clearing HQ Genie conversation and starting fresh")
     genie_service.reset_conversation()
-    return [], ""
+    # Clear everything: history, input, and results display
+    return [], "", html.Div(style={'display': 'none'})
 
 
 # Display conversation history (HQ)
 @app.callback(
     Output('hq-genie-conversation-display', 'children'),
-    [Input('hq-genie-conversation-history', 'data')],
-    [State('current-persona', 'data'),
-     State('selected-property-id', 'data')],
+    [Input('hq-genie-conversation-history', 'data'),
+     Input('selected-property-id', 'data')],
+    [State('current-persona', 'data')],
     prevent_initial_call=False
 )
-def display_conversation_hq(history, persona, hq_property):
+def display_conversation_hq(history, hq_property, persona):
+    # Set auth context for suggested questions (always update when property changes)
+    role = 'hq'
+    property_val = hq_property if hq_property else None
+    try:
+        genie_service.set_auth_context(role=role, property=property_val)
+    except Exception as e:
+        print(f"⚠️ Failed to set Genie auth context: {str(e)}")
+    
     if not history:
-        # Set auth context for suggested questions
-        role = 'hq'
-        property_val = hq_property if hq_property else None
-        try:
-            genie_service.set_auth_context(role=role, property=property_val)
-        except:
-            pass  # Don't fail on context setup
         
         # Show suggested questions when empty
         try:
@@ -2864,35 +3068,66 @@ def ask_genie_hq(n_clicks, query, history, persona, hq_property):
         ]
         return error_history, html.Div(), ""
 
-# Clear conversation (PM)
+# Clear conversation (PM) - triggered by button click
 @app.callback(
     [Output('pm-genie-conversation-history', 'data'),
-     Output('pm-genie-input', 'value')],
+     Output('pm-genie-input', 'value'),
+     Output('pm-genie-results', 'children', allow_duplicate=True)],
     [Input('btn-clear-genie-pm', 'n_clicks')],
     prevent_initial_call=True
 )
 def clear_genie_conversation_pm(n_clicks):
+    print("🔄 Clearing PM Genie conversation and starting fresh")
     genie_service.reset_conversation()
-    return [], ""
+    # Clear everything: history, input, and results display
+    return [], "", html.Div(style={'display': 'none'})
+
+
+# Clear both conversations when switching roles/personas
+@app.callback(
+    [Output('hq-genie-conversation-history', 'data', allow_duplicate=True),
+     Output('pm-genie-conversation-history', 'data', allow_duplicate=True),
+     Output('hq-genie-input', 'value', allow_duplicate=True),
+     Output('pm-genie-input', 'value', allow_duplicate=True)],
+    [Input('btn-switch-hq', 'n_clicks'),
+     Input('btn-switch-pm', 'n_clicks'),
+     Input('btn-back-to-roles', 'n_clicks')],
+    prevent_initial_call=True
+)
+def clear_genie_on_role_switch(switch_hq, switch_pm, back_roles):
+    """Clear Genie conversation history when user switches roles"""
+    ctx = callback_context
+    if not ctx.triggered:
+        return dash.no_update, dash.no_update, dash.no_update, dash.no_update
+    
+    button_id = ctx.triggered[0]['prop_id'].split('.')[0]
+    print(f"🔄 Clearing Genie conversations due to role switch: {button_id}")
+    
+    # Reset the genie service conversation
+    genie_service.reset_conversation()
+    
+    # Clear both HQ and PM conversation histories and inputs
+    return [], [], "", ""
 
 
 # Display conversation history (PM)
 @app.callback(
     Output('pm-genie-conversation-display', 'children'),
-    [Input('pm-genie-conversation-history', 'data')],
-    [State('current-persona', 'data'),
-     State('pm-selected-property-store', 'data')],
+    [Input('pm-genie-conversation-history', 'data'),
+     Input('pm-selected-property-store', 'data')],
+    [State('current-persona', 'data')],
     prevent_initial_call=False
 )
-def display_conversation_pm(history, persona, pm_property):
+def display_conversation_pm(history, pm_property, persona):
+    # Set auth context for suggested questions (always update when property changes)
+    role = 'pm'
+    property_val = pm_property if pm_property else None
+    try:
+        genie_service.set_auth_context(role=role, property=property_val)
+    except Exception as e:
+        print(f"⚠️ Failed to set Genie auth context: {str(e)}")
+    
     if not history:
-        # Set auth context for suggested questions
-        role = 'pm'
-        property_val = pm_property if pm_property else None
-        try:
-            genie_service.set_auth_context(role=role, property=property_val)
-        except:
-            pass  # Don't fail on context setup
         
         # Show suggested questions when empty
         try:
@@ -3103,14 +3338,13 @@ def ask_genie_pm(n_clicks, query, history, persona, pm_property):
         ]
         return error_history, html.Div(), ""
 
-# Load PM property dropdown
-# Handle PM property button clicks
+# Handle PM property button clicks and default selection
 @app.callback(
     [Output('pm-selected-property-store', 'data'),
      Output({'type': 'pm-property-btn', 'location': 'Austin, TX'}, 'outline'),
      Output({'type': 'pm-property-btn', 'location': 'Boston, MA'}, 'outline')],
-    [Input({'type': 'pm-property-btn', 'location': dash.dependencies.ALL}, 'n_clicks')],
-    [State('current-screen', 'data')],
+    [Input({'type': 'pm-property-btn', 'location': dash.dependencies.ALL}, 'n_clicks'),
+     Input('current-screen', 'data')],
     prevent_initial_call=False
 )
 def handle_pm_property_selection(n_clicks_list, screen):
@@ -3118,22 +3352,33 @@ def handle_pm_property_selection(n_clicks_list, screen):
         return dash.no_update, dash.no_update, dash.no_update
     
     ctx = dash.callback_context
-    if not ctx.triggered or not any(n_clicks_list):
-        # Default to Austin on initial load
-        print("📍 PM Dashboard: Defaulting to Austin, TX")
+    
+    # Check what triggered the callback
+    if not ctx.triggered:
+        # Initial load - default to Austin
+        print("📍 PM Dashboard: Initial load - Defaulting to Austin, TX")
         return 'austin-tx', False, True  # Austin selected (outline=False means filled)
     
-    triggered_id = ctx.triggered[0]['prop_id']
+    triggered_id = ctx.triggered[0]['prop_id'].split('.')[0]
     
-    # Extract location from triggered button
-    if 'Austin' in triggered_id:
-        print("📍 PM Dashboard: Austin, TX selected")
+    # If triggered by screen change (entering PM view), default to Austin
+    if triggered_id == 'current-screen':
+        print("📍 PM Dashboard: Entering PM view - Defaulting to Austin, TX")
         return 'austin-tx', False, True  # Austin selected
-    elif 'Boston' in triggered_id:
-        print("📍 PM Dashboard: Boston, MA selected")
-        return 'boston-ma', True, False  # Boston selected
     
-    return 'austin-tx', False, True  # Default
+    # If triggered by button click
+    if 'pm-property-btn' in triggered_id:
+        # Extract location from triggered button
+        if 'Austin' in triggered_id:
+            print("📍 PM Dashboard: Austin, TX selected by user")
+            return 'austin-tx', False, True  # Austin selected
+        elif 'Boston' in triggered_id:
+            print("📍 PM Dashboard: Boston, MA selected by user")
+            return 'boston-ma', True, False  # Boston selected
+    
+    # Fallback to Austin
+    print("📍 PM Dashboard: Fallback to Austin, TX")
+    return 'austin-tx', False, True
 
 # Load PM property details (header card)
 @app.callback(
@@ -3212,8 +3457,8 @@ def load_pm_filtered_dashboard(property_id):
         encoded_location = quote(quote(location, safe=''), safe='')
         
         # Base dashboard URL for embedding
-        base_url = "https://fe-vm-voc-lakehouse-inn-workspace.cloud.databricks.com/embed/dashboardsv3/01f0ab936a8815ffbc5b0dd3d8ca0f9f"
-        filtered_url = f"{base_url}?o=604717363374831&f_property_rating%7E57a7e64b={encoded_location}"
+        base_url = os.getenv('DATABRICKS_PROPERTY_DASHBOARD_URL', "https://fe-vm-voc-lakehouse-inn-workspace.cloud.databricks.com/embed/dashboardsv3/01f0ab936a8815ffbc5b0dd3d8ca0f9f")
+        filtered_url = f"{base_url}&f_property_rating%7E57a7e64b={encoded_location}"
         
         print(f"🗺️ Loading PM dashboard filtered for location: {location}")
         print(f"📊 Dashboard URL: {filtered_url}")
@@ -3281,7 +3526,21 @@ def load_pm_aspect_analysis_table(property_id):
         
         return dbc.Card([
             dbc.CardBody([
-                html.H4("📋 Aspect Analysis", className="mb-3", style={'fontWeight': '600'}),
+                html.Div([
+                    html.H4("📋 Aspect Analysis", className="mb-0 d-inline-block", style={'fontWeight': '600'}),
+                    html.I(
+                        className="bi bi-info-circle ms-2",
+                        id={'type': 'open-severity-modal', 'view': 'pm-aspect'},
+                        style={
+                            'fontSize': '1.1rem',
+                            'color': '#0d6efd',
+                            'cursor': 'pointer',
+                            'verticalAlign': 'middle'
+                        },
+                        title="Click to view severity threshold logic",
+                        n_clicks=0
+                    ),
+                ], className="mb-3", style={'display': 'flex', 'alignItems': 'center'}),
                 html.P([
                     "Overview of all aspects and their performance for your property. ",
                     html.Strong("Negative Reviews %"), 
