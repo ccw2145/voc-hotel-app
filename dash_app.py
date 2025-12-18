@@ -878,7 +878,7 @@ app.layout = html.Div([
     dbc.Modal([
         dbc.ModalHeader(dbc.ModalTitle("Severity Threshold Logic")),
         dbc.ModalBody([
-            html.P("Status is determined by comparing recent performance against a 21-day baseline:", 
+            html.P("Status is determined by comparing recent 7-day performance against a 21-day baseline:", 
                   style={'marginBottom': '1rem'}),
             html.Div([
                 html.H6("Thresholds:", style={'fontWeight': '600', 'marginBottom': '0.75rem'}),
@@ -2544,7 +2544,8 @@ def load_reviews_deep_dive(selected_aspect, property_id, screen):
                                 html.H4(f"{deep_dive['total_reviews']}", 
                                        className="mb-0",
                                        style={'fontWeight': '600'}),
-                                html.Small("Total Reviews", className="text-muted"),
+                                html.Small("Total Reviews", className="text-muted d-block"),
+                                html.Small("7-day window", className="text-muted d-block", style={'fontSize': '0.7rem'})
                             ], className="text-center"),
                         ])
                     ], md=4, className="text-center"),
@@ -2567,7 +2568,7 @@ def load_reviews_deep_dive(selected_aspect, property_id, screen):
                                     html.H3(deep_dive['negative_count'], 
                                            className="mb-1",
                                            style={'fontWeight': '700', 'color': '#dc3545'}),
-                                    html.P("Negative Reviews (in last 21 days)", className="mb-0 text-muted", style={'fontSize': '0.9rem'}),
+                                    html.P("Negative Reviews", className="mb-0 text-muted", style={'fontSize': '0.9rem'}),
                                 ], className="text-center")
                             ], style={'padding': '1rem'})
                         ], style={'border': '2px solid #dc3545', 'borderRadius': '8px', 'backgroundColor': '#fff5f5'}),
@@ -2579,7 +2580,7 @@ def load_reviews_deep_dive(selected_aspect, property_id, screen):
                                     html.H3(deep_dive['positive_count'], 
                                            className="mb-1",
                                            style={'fontWeight': '700', 'color': '#28a745'}),
-                                    html.P("Positive Reviews (in last 21 days)", className="mb-0 text-muted", style={'fontSize': '0.9rem'}),
+                                    html.P("Positive Reviews", className="mb-0 text-muted", style={'fontSize': '0.9rem'}),
                                 ], className="text-center")
                             ], style={'padding': '1rem'})
                         ], style={'border': '2px solid #28a745', 'borderRadius': '8px', 'backgroundColor': '#f1f9f3'}),
@@ -3647,7 +3648,8 @@ def load_pm_reviews_deep_dive(selected_aspect, property_id):
                                 html.H4(f"{deep_dive['total_reviews']}", 
                                        className="mb-0",
                                        style={'fontWeight': '600'}),
-                                html.Small("Total Reviews", className="text-muted"),
+                                html.Small("Total Reviews", className="text-muted d-block"),
+                                html.Small("7-day window", className="text-muted d-block", style={'fontSize': '0.7rem'}),
                             ], className="text-center"),
                         ])
                     ], md=4, className="text-center"),
@@ -3670,7 +3672,7 @@ def load_pm_reviews_deep_dive(selected_aspect, property_id):
                                     html.H3(deep_dive['negative_count'], 
                                            className="mb-1",
                                            style={'fontWeight': '700', 'color': '#dc3545'}),
-                                    html.P("Negative Reviews (in last 21 days)", className="mb-0 text-muted", style={'fontSize': '0.9rem'}),
+                                    html.P("Negative Reviews", className="mb-0 text-muted", style={'fontSize': '0.9rem'}),
                                 ], className="text-center")
                             ], style={'padding': '1rem'})
                         ], style={'border': '2px solid #dc3545', 'borderRadius': '8px', 'backgroundColor': '#fff5f5'}),
@@ -3682,7 +3684,7 @@ def load_pm_reviews_deep_dive(selected_aspect, property_id):
                                     html.H3(deep_dive['positive_count'], 
                                            className="mb-1",
                                            style={'fontWeight': '700', 'color': '#28a745'}),
-                                    html.P("Positive Reviews (in last 21 days)", className="mb-0 text-muted", style={'fontSize': '0.9rem'}),
+                                    html.P("Positive Reviews", className="mb-0 text-muted", style={'fontSize': '0.9rem'}),
                                 ], className="text-center")
                             ], style={'padding': '1rem'})
                         ], style={'border': '2px solid #28a745', 'borderRadius': '8px', 'backgroundColor': '#f1f9f3'}),

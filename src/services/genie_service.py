@@ -83,9 +83,9 @@ class GenieService:
         
         # Split by hyphen and capitalize each part
         parts = property_id.split('-')
-        if len(parts) == 2:
-            city = parts[0].replace('_', ' ').title()  # Handle underscores if any
-            state = parts[1].upper()
+        if len(parts) >= 2:
+            city = " ".join(parts[:-1]).replace('_', ' ').title()  # Handle underscores if any
+            state = parts[-1].upper()
             return f"{city}, {state}"
         
         # Fallback: just capitalize
@@ -97,8 +97,7 @@ class GenieService:
             import json
             
             # Get the Genie space details
-            space = self.w.genie.get_space(self.genie_space_id,include_serialized_space=True)
-            # space = self.w.genie.get_space(self.genie_space_id,include_serialized_space=True)
+            space = self.w.genie.get_space(self.genie_space_id)
 
             # Extract sample questions from serialized_space JSON
             suggested = []

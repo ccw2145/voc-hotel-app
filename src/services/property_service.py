@@ -713,7 +713,7 @@ class PropertyService:
         
         # Calculate actual counts
         # negative_count = nms_open * volume_open
-        negative_count = int(nms_open_value * volume_open)
+        negative_count = round(nms_open_value * volume_open)
         # Total reviews = volume_open
         total_reviews = volume_open
         positive_count = total_reviews - negative_count
